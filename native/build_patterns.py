@@ -1,7 +1,7 @@
 """Generate compiler-shape signatures from reviewed emulator executables.
 
 Development only: pip install pefile==2024.8.26 capstone==5.0.9
-Supply --msvc, --pgo and --pokedinner paths to the reviewed GUI executables.
+Supply --msvc, --pgo, --pokedinner and --selevet paths to the reviewed GUI executables.
 Relative calls, branches leaving the signature, and RIP-relative addresses are
 masked. Stack layout, detection logic and instruction shape remain exact; a match
 must begin at a PE unwind-function boundary. The metadata-reader fingerprint
@@ -28,11 +28,12 @@ def signature(cs,pe,start,end,zero=()):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    for name in ('msvc','pgo','pokedinner'):parser.add_argument('--'+name,type=Path,required=True)
+    for name in ('msvc','pgo','pokedinner','selevet'):parser.add_argument('--'+name,type=Path,required=True)
     args=parser.parse_args();root=Path(__file__).resolve().parents[1];patterns=[]
     specs=[('msvc',0x459c40,0x459f08,0x459c40,'entry','msvc','48895c2410',0x459e60),
            ('pgo',0x1f560,0x1f7e7,0x1f6ea,'inline','gnu','488d8c2480010000',0x1f68f),
-           ('pokedinner',0x2fe4d0,0x2fe6d9,0x2fe638,'inline-pokedinner','msvc-read9','4c8d7dc04c89f9',0x2fe620)]
+           ('pokedinner',0x2fe4d0,0x2fe6d9,0x2fe638,'inline-pokedinner','msvc-read9','4c8d7dc04c89f9',0x2fe620),
+           ('selevet',0x191ef50,0x191f0e6,0x191f0df,'inline-selevet','msvc-read9','4c8bbdb0030000',0x191f06f)]
     cs=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64);cs.detail=True
     for name,start,end,hook,kind,abi,expected,metadata_call in specs:
         pe=pefile.PE(str(getattr(args,name)))
@@ -57,6 +58,7 @@ def main():
         reader.update(size_disp_offset=size_pos,read_disp_offset=read_pos)
         pattern.update(name=name,abi=abi,kind=kind,hook_delta=hook-start,expected=expected,
                        metadata_call_delta=metadata_call-start,reader=reader)
+        if name=='selevet':pattern['preserve_duplicate_unwind']=True
         patterns.append(pattern);pe.close()
     (root/'src/emulator_patterns.py').write_text('# Generated from reviewed loader and metadata-reader fingerprints. SPDX-License-Identifier: MIT\n'
                                                'PATTERNS = '+repr(patterns)+'\n',encoding='utf-8')
