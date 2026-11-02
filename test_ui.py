@@ -185,6 +185,23 @@ class InterfaceTests(unittest.TestCase):
             self.assertIsNone(app.paste_art_shortcut())
         self.assertFalse(self.errors)
 
+    def test_supported_emulator_catalog_fits_with_actions(self):
+        from emulator_dialog import EmulatorDialog
+        dialog=EmulatorDialog(self.app)
+        try:
+            dialog.geometry('740x745');self.pump(.08)
+            self.assertIn('Selevet performance build 4',dialog.supported_text)
+            self.assertIn('30 FPS',dialog.supported_text)
+            last=dialog.supported_panel.inner.winfo_children()[-1]
+            self.assertLessEqual(last.winfo_rooty()+last.winfo_height(),
+                                 dialog.supported_panel.winfo_rooty()+dialog.supported_panel.winfo_height())
+            for button in (dialog.check_button,dialog.apply_button,dialog.remove_button):
+                self.assertTrue(button.winfo_viewable())
+                self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),
+                                     dialog.winfo_rooty()+dialog.winfo_height())
+            self.assertFalse(self.errors)
+        finally:dialog.close()
+
     def test_startup_caution_and_remembered_dismissal(self):
         from startup_notice import should_show
         app=self.app;preferences=app.preferences_path

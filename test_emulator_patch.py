@@ -76,11 +76,13 @@ class PatchTests(unittest.TestCase):
     def test_forward_match_requires_unique_exact_normalized_code(self):
         mask=bytearray(b'\xff'*64);mask[24:28]=bytes(4);body=self.original[0x400:0x440]
         pattern={'name':'fixture','abi':'msvc','kind':'entry','hook_delta':0,'expected':'48895c2410',
+                 'preserve_duplicate_unwind':True,
                  'anchor':body[:12].hex(),'mask':base64.b85encode(zlib.compress(mask)).decode(),
                  'normalized_sha256':ep.digest(bytes(b&m for b,m in zip(body,mask)))}
         self.profiles.clear()
         with patch.object(ep,'PATTERNS',[pattern]),patch.object(ep,'reader_abi',return_value='msvc'):
             p=ep.profile_for(self.original,'future-fork.exe');self.assertIsNotNone(p);self.assertFalse(p['verified'])
+            self.assertTrue(p['preserve_duplicate_unwind'])
             relocated=bytearray(self.original);relocated[0x418:0x41c]=b'abcd'
             self.assertIsNotNone(ep.profile_for(bytes(relocated),'future-fork.exe'))
             self.file.rename(self.root/'future-fork.exe')
@@ -122,6 +124,23 @@ class PatchTests(unittest.TestCase):
             buffer=ctypes.create_string_buffer(data);stored=ctypes.c_uint32();calculated=ctypes.c_uint32()
             self.assertTrue(imagehlp.CheckSumMappedFile(buffer,len(data),ctypes.byref(stored),ctypes.byref(calculated)))
             self.assertEqual(stored.value,calculated.value)
+    def test_duplicate_original_unwind_records_are_guarded_and_ordered(self):
+        data=bytearray(self.original)
+        struct.pack_into('<II',data,0x98+112+24,0x2000,24)
+        original=[(0x1000,0x1040,0x2030),(0x1000,0x1040,0x2020)]
+        for i,record in enumerate(original):struct.pack_into('<III',data,0x800+12*i,*record)
+        data[0x820:0x824]=data[0x830:0x834]=bytes.fromhex('01000000')
+        profile=fixture_profile()
+        with self.assertRaisesRegex(ValueError,'Overlapping'):ep.transform(bytes(data),profile)
+        profile['preserve_duplicate_unwind']=True
+        changed=ep.transform(bytes(data),profile);pe=ep.PE(changed);rva,size=pe.directory(3)
+        frames=list(struct.iter_unpack('<III',pe.read(rva,size)))
+        self.assertEqual([f for f in frames if f[:2]==(0x1000,0x1040)],original)
+        data[0x831]=1
+        with self.assertRaisesRegex(ValueError,'Overlapping'):ep.transform(bytes(data),profile)
+        data[0x831]=0;struct.pack_into('<I',data,0x80c,0x1010)
+        with self.assertRaisesRegex(ValueError,'Overlapping'):ep.transform(bytes(data),profile)
+
     def test_parent_folder_selection(self):
         self.assertEqual(Path(ep.inspect(self.root.parent/self.root.name)['folder']),self.root.resolve())
 
@@ -146,6 +165,43 @@ def metadata(switch2):
 
 @unittest.skipUnless(sys.platform=='win32','Native probe uses the Windows x64 ABI')
 class NativeProbeTests(unittest.TestCase):
+    def test_selevet_hook_uses_live_file_and_r13_mode_flag(self):
+        data=bytearray(synthetic_pe());saved=bytes.fromhex('4c8bbdb0030000')
+        data[0x400:0x407]=saved
+        profile={'name':'Synthetic Selevet','file':'eglantine.exe','abi':'msvc-read9',
+                 'hook':0x1000,'expected':saved.hex(),'kind':'inline-selevet'}
+        changed=ep.transform(bytes(data),profile);pe=ep.PE(changed)
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.VirtualAlloc.argtypes=[ctypes.c_void_p,ctypes.c_size_t,ctypes.c_uint32,ctypes.c_uint32]
+        kernel.VirtualAlloc.restype=ctypes.c_void_p
+        kernel.VirtualFree.argtypes=[ctypes.c_void_p,ctypes.c_size_t,ctypes.c_uint32]
+        memory=kernel.VirtualAlloc(None,struct.unpack_from('<I',changed,pe.optional+56)[0],0x3000,0x40)
+        self.assertTrue(memory)
+        try:
+            for _,_,va,size,offset in pe.sections:ctypes.memmove(memory+va,changed[offset:offset+size],size)
+            ending=bytes.fromhex('4489e84881c400060000415f415d5dc3')
+            ctypes.memmove(memory+0x1000+len(saved),ending,len(ending))
+            stub=bytearray.fromhex('55415541574881ec00060000488dac24800000004189d5')
+            stub.extend(bytes.fromhex('488b014889842428040000488b41084889842430040000'))
+            stub.extend(bytes.fromhex('48b8')+struct.pack('<Q',memory+0x1000)+bytes.fromhex('ffe0'))
+            ctypes.memmove(memory+0x1100,bytes(stub),len(stub))
+            invoke=ctypes.CFUNCTYPE(ctypes.c_uint32,ctypes.c_void_p,ctypes.c_uint32)(memory+0x1100)
+            Size=ctypes.CFUNCTYPE(ctypes.c_uint64,ctypes.c_void_p)
+            Read=ctypes.CFUNCTYPE(ctypes.c_uint64,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint64,ctypes.c_uint64)
+            for switch2 in (False,True):
+                program=fmt.nca([fmt.pfs_section(fmt.filesystem([('main',b'NSO0'+bytes(256)),('main.npdm',metadata(switch2))]))],0x0400111122220000,0)
+                sample=b''.join(fmt.filesystem([('program.nca',program)]).chunks())
+                @Size
+                def size(_):return len(sample)
+                @Read
+                def read(_,out,n,off):
+                    chunk=sample[off:off+n];ctypes.memmove(out,chunk,len(chunk));return len(chunk)
+                table=(ctypes.c_void_p*12)();table[3]=ctypes.cast(size,ctypes.c_void_p);table[9]=ctypes.cast(read,ctypes.c_void_p)
+                file=(ctypes.c_void_p*1)(ctypes.addressof(table));shared=(ctypes.c_void_p*2)(ctypes.addressof(file),0)
+                for original_mode in (0,1):
+                    self.assertEqual(invoke(shared,original_mode),int(switch2 or original_mode))
+        finally:kernel.VirtualFree(memory,0,0x8000)
+
     def test_native_switch1_switch2_and_corrupt_containers(self):
         kernel=ctypes.WinDLL('kernel32',use_last_error=True)
         kernel.VirtualAlloc.argtypes=[ctypes.c_void_p,ctypes.c_size_t,ctypes.c_uint32,ctypes.c_uint32];kernel.VirtualAlloc.restype=ctypes.c_void_p

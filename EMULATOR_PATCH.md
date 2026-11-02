@@ -23,10 +23,11 @@ booting, rendering and performance yourself before relying on companion-free use
 
 ## Recognized builds and future updates
 
-The patch panel shows this list directly. Official Windows x64 assets checked on **2026-11-01**:
+The patch panel shows this list directly. Release-provided Windows x64 assets checked through **2026-11-02**:
 
 | Target | Supported variants |
 |---|---|
+| [Selevet performance build 4](https://github.com/sylvieistaken/selevet-eglantine/releases/tag/selevet-eglantine-performance-4) (`8b076b1`) | Normal + 30 FPS downloads, GUI |
 | [Eglantine nx2 build 98](https://github.com/Djihads80/Eglantine/releases/tag/build-98) (`adae763`) | Standard + PGO, GUI and CLI |
 | [Eglantine AMD Experimental 77-2, tag build-99](https://github.com/Djihads80/Eglantine/releases/tag/build-99) (`a42b4d4`) | Standard + PGO, GUI and CLI |
 | [Eglantine nx2 build 96](https://github.com/Djihads80/Eglantine/releases/tag/build-96) (`e96917c`) | Standard + PGO, GUI and CLI |
@@ -37,6 +38,16 @@ Build 99 is the AMD experimental release, not the regular nx2 build 99. Both lat
 
 The ten newly checked executables passed exact apply/remove restoration and **60 isolated native hook cases** (Switch 1/2 NCA, NSP and legacy-container metadata). Real CLI startup comparisons passed for standard Eglantine 98, AMD 77-2/build-99 standard and PokeDinner 2.1.0a: the patch selected the same **31.25 MHz** guest counter as an external companion. PGO native-hook/restore checks passed, but the unmodified PGO CLI also exited with Windows invalid-handle error `0xC0000008` during these startup attempts. Full PGO startup/gameplay is therefore not claimed; those failures did not require a patch to reproduce.
 
+Selevet's two archives contain the same executable. Their frame-limit difference
+is in `nx2_switches.txt`; NSP Box changes neither that file nor the 30 FPS option.
+Both archives passed exact patch/remove restoration, 12 combined isolated hook
+cases and six real GUI startup comparisons using temporary profiles and synthetic
+NSPs. The corrected startup selected 31.25 MHz without an external NPDM, matching
+the companion path. These are mode/timing checks, not game-boot or FPS benchmarks.
+Selevet's existing folded duplicate unwind records are retained in their original
+order; only identical pre-existing ranges with matching stack-unwind codes are
+accepted, and new or partial overlaps are refused.
+
 The same menu also scans other executable names and future builds automatically.
 It compares normalized loader-code fingerprints: relative addresses may move,
 while stack layout, instruction shape and detection behavior must match a
@@ -46,6 +57,11 @@ Each match must be unique and begin at a Windows
 unwind-function boundary. A new matching build is labeled **experimental** and
 can be tried without adding a version-specific menu entry. File naming or a
 version string alone is never enough to approve a patch.
+
+Selevet minor-update matching has checks for masked linker displacement changes,
+changed result registers/stack layouts and supported/unknown VFS reader slots.
+A matching future build is still labeled **experimental** and can be restored from
+its exact backup. A new version number alone does not establish compatibility.
 
 This does not guarantee every future release or fork. A compiler/loader rewrite,
 different architecture, signed executable or unmatched code can require a patcher
@@ -129,7 +145,7 @@ python -m pip install ziglang==0.16.0 pefile==2024.8.26 capstone==5.0.9
 python native/build_probe.py --zig /path/to/zig
 ```
 
-`native/build_patterns.py --help` documents rebuilding the reviewed fingerprints
+`native/build_patterns.py --help` documents the four reviewed inputs, including Selevet performance build 4, for rebuilding the reviewed fingerprints
 from your own corresponding emulator executables. A changed implementation needs
 new source review, hook execution and restore testing before adding a pattern.
 Normal app users do not need a compiler or these development dependencies.

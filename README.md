@@ -4,11 +4,11 @@
 
 A portable Windows app that packages a complete, already-extracted ExeFS/RomFS snapshot into a plaintext NSP for compatible emulators. Choose a folder, add your own artwork, and build an NSP.
 
-**NSP Box 3.0** adds the new app/UI icons, a subtle animated blue/indigo background and smoother transitions. It retains the NSP-only Game/DLC workflows and the Windows drag-and-drop fix for [issue #2](https://github.com/smarkyie/NSP-Box/issues/2). Native drop events queue paths for Tk to handle safely during its normal event loop.
+**NSP Box 3.1** adds emulator-patch support for [Selevet performance build 4](https://github.com/sylvieistaken/selevet-eglantine/releases/tag/selevet-eglantine-performance-4), both normal and 30 FPS downloads, plus fingerprint matching for compatible minor updates. Future matches are experimental and still require a unique reviewed loader and metadata reader. The app includes redesigned icons, a subtle animated blue/indigo background and smooth transitions. It retains the NSP-only Game/DLC workflows and the Windows drag-and-drop fix for [issue #2](https://github.com/smarkyie/NSP-Box/issues/2). Native drop events queue paths for Tk to handle safely during its normal event loop.
 
 Use **Game** for complete ExeFS/RomFS snapshots and **DLC** for separate RomFS-only add-ons. A user installed the Bananza DLC NSP and confirmed that the game recognized it in PokeDinner 2.0.0. This is one successful user test, not universal DLC compatibility. See [DLC instructions](DLC.md).
 
-The reversible **Emulator patch** panel now lists its supported Windows x64 targets: Eglantine nx2 98/96, AMD Experimental 77-2 (build-99), and PokeDinner 2.1.0a/2.0.0. Standard/PGO and GUI/CLI variants are identified explicitly. Compatible Windows x64 Eglantine/PokeDinner builds read the metadata inside an NSP, so a separate `main.npdm` beside the game is unnecessary after applying the patch and restarting. See [patch installation, removal and limits](EMULATOR_PATCH.md). Windows x64 downloads only; no Linux build is included.
+The reversible **Emulator patch** panel now lists its supported Windows x64 targets: Selevet performance build 4 (normal/30 FPS GUI), Eglantine nx2 98/96, AMD Experimental 77-2 (build-99), and PokeDinner 2.1.0a/2.0.0. Standard/PGO and GUI/CLI variants are identified explicitly. Compatible Windows x64 Selevet/Eglantine/PokeDinner builds read the metadata inside an NSP, so a separate `main.npdm` beside the game is unnecessary after applying the patch and restarting. See [patch installation, removal and limits](EMULATOR_PATCH.md). Windows x64 downloads only; no Linux build is included.
 
 **Piracy is not supported.** Use only files and artwork you have lawfully obtained and are authorized to use. No games, game artwork, firmware or Nintendo keys are provided. Nintendo Switch, Nintendo Switch 2 and related marks belong to Nintendo; game content belongs to its respective rights holders. This is an independent project, not affiliated with, sponsored by or endorsed by Nintendo. See [ownership and use notices](DISCLAIMER.md).
 
@@ -40,7 +40,7 @@ NSP is a PFS0 container with Program, Control and Meta NCAs for games, or Data a
 ## Use the emulator patch
 
 1. Fully close the emulator and open **Emulator patch** in the packager header.
-2. Select the folder containing the Windows x64 Eglantine/PokeDinner executables, then **Check** and **Add patch**. Matching unverified builds offer **Try patch** with an experimental warning.
+2. Select the folder containing the Windows x64 Selevet/Eglantine/PokeDinner executables, then **Check** and **Add patch**. Matching unverified builds offer **Try patch** with an experimental warning.
 3. Restart the emulator. Open your NSP from a folder without an external `main.npdm`. Existing packages already contain their metadata and do not need rebuilding.
 4. For new single-file outputs, uncheck **Create package folder**. It remains on by default for compatibility with unpatched emulators.
 

@@ -1,5 +1,15 @@
 # Release notes
 
+## 3.1.0 — 2026-11-02
+
+- **Selevet support:** the emulator patcher now supports Selevet Eglantine performance build 4, including both normal and 30 FPS Windows downloads.
+- **Future-build matching:** minor Selevet updates can be recognized when the reviewed loader and metadata-reader fingerprints still match. Unverified matches are labeled experimental; changed or ambiguous hooks are refused.
+- **Settings preserved:** adding or removing the metadata patch keeps `nx2_switches.txt` and the existing 30 FPS setting unchanged. Exact original executable backups remain available for removal.
+- **Supported-build list:** added Selevet and adjusted the patch dialog so its full compatibility list remains visible.
+- **Validation:** both Selevet downloads passed byte-exact patch removal, isolated native hook checks and real startup timing comparisons. Patched startup without a companion matched the external-NPDM path at 31.25 MHz. These checks do not establish gameplay compatibility or FPS gains.
+
+**Experimental build with limited real-world testing.** Please [open an issue](https://github.com/smarkyie/NSP-Box/issues/new) with your NSP Box/emulator versions, steps and error messages if something goes wrong. Remove personal information from logs and never upload games or keys.
+
 ## 3.0.0 — 2026-11-01
 
 - **New branding:** NSP Box, with redesigned icons and a new app logo.
