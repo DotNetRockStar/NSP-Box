@@ -9,7 +9,7 @@ from ui import BG,PANEL,TEXT,MUTED,Button,Entry,Panel,ui_font
 class EmulatorDialog(tk.Toplevel):
     def __init__(self,parent):
         super().__init__(parent);self.withdraw();self.title('Emulator patch');self.configure(bg=BG)
-        self.geometry('780x760');self.minsize(740,720);self.transient(parent)
+        self.geometry('780x785');self.minsize(740,745);self.transient(parent)
         self.parent=parent;self.motion=parent.motion;self.working=False;self.view=None;self.events=queue.Queue()
         self.folder=tk.StringVar();self.summary=tk.StringVar(value='Select the folder containing the emulator executable.')
         self.message=tk.StringVar(value='No emulator files have been changed.')
@@ -21,7 +21,7 @@ class EmulatorDialog(tk.Toplevel):
         self.entry.bind('<Return>',lambda event:self.check())
         card=Panel(self,height=118);card.pack(fill='x',padx=24)
         tk.Label(card.inner,textvariable=self.summary,bg=PANEL,fg=TEXT,font=ui_font(11,True),anchor='nw',justify='left',wraplength=595).pack(fill='both',expand=True)
-        self.supported_panel=Panel(self,height=165);self.supported_panel.pack(fill='x',padx=24,pady=(12,0))
+        self.supported_panel=Panel(self,height=190);self.supported_panel.pack(fill='x',padx=24,pady=(12,0))
         tk.Label(self.supported_panel.inner,text='Supported patch targets · Windows x64',bg=PANEL,fg=TEXT,
                  font=ui_font(10,True)).pack(anchor='w',pady=(0,6))
         self.supported_text='\n'.join(f'{b["label"]} — {b["variants"]}' for b in SUPPORTED_BUILDS)
@@ -42,8 +42,8 @@ class EmulatorDialog(tk.Toplevel):
         self.protocol('WM_DELETE_WINDOW',self.close);self.job=self.after(70,self.poll)
         self.update_idletasks()
         x=max(0,parent.winfo_rootx()+(parent.winfo_width()-780)//2)
-        y=max(0,parent.winfo_rooty()+(parent.winfo_height()-760)//2)
-        self.geometry(f'780x760{x:+d}{y:+d}');self.deiconify()
+        y=max(0,parent.winfo_rooty()+(parent.winfo_height()-785)//2)
+        self.geometry(f'780x785{x:+d}{y:+d}');self.deiconify()
     def pick(self):
         folder=filedialog.askdirectory(parent=self,title='Select the folder containing the emulator executable')
         if folder:self.folder.set(folder);self.check()

@@ -85,8 +85,10 @@ def profile_for(data,name,legacy=False):
                 if pe.read(hook,len(bytes.fromhex(expected))).hex()!=expected:continue
                 abi=('gnu' if pattern['kind']=='inline' else 'msvc') if legacy else reader_abi(pe,frames,start,pattern)
                 if abi is None:continue
-                matches.append({'name':'Compatible loader · experimental build','file':name,'abi':abi,
-                                'hook':hook,'expected':expected,'kind':pattern['kind'],'verified':False})
+                match={'name':'Compatible loader · experimental build','file':name,'abi':abi,
+                       'hook':hook,'expected':expected,'kind':pattern['kind'],'verified':False}
+                if pattern.get('preserve_duplicate_unwind'):match['preserve_duplicate_unwind']=True
+                matches.append(match)
         return matches[0] if len(matches)==1 else None
     except (ValueError,struct.error,zlib.error,KeyError):return None
 
@@ -124,7 +126,7 @@ def transform(data,profile,revision=PATCH_REVISION):
         uw=put(bytes.fromhex('0104010004620000')) # ALLOC_SMALL 56
         tuw=put(bytes.fromhex('0105020005340200')) # original SAVE_NONVOL RBX, +16
         functions.extend([(wrapper,trampoline,uw),(trampoline,wrapper+len(code),tuw)])
-    elif profile['kind'] in ('inline','inline-pokedinner'):
+    elif profile['kind'] in ('inline','inline-pokedinner','inline-selevet'):
         # PGO inlines the original function into System::Load. Its file shared_ptr
         # remains alive at rsp+0x108 here, and the original result is in EBP.
         frame=next((f for f in original_functions if f[0]<=hook<f[1]),None)
@@ -132,16 +134,30 @@ def transform(data,profile,revision=PATCH_REVISION):
         # Reuse System::Load's existing 32-byte outgoing-call shadow space.
         # RSP does not change, so the chained original unwind frame remains exact.
         pokedinner=profile['kind']=='inline-pokedinner'
-        code.extend(bytes.fromhex('488d8da8030000' if pokedinner else '488d8c2408010000'))
-        call(base+payload['entry']);code.extend(bytes.fromhex('4109c4' if pokedinner else '09c5'))
+        selevet=profile['kind']=='inline-selevet'
+        # Selevet keeps the live file in the same RBP-relative slot, but its
+        # hardware-mode result is R13D instead of PokeDinner's R12D.
+        code.extend(bytes.fromhex('488d8da8030000' if pokedinner or selevet else '488d8c2408010000'))
+        call(base+payload['entry']);code.extend(bytes.fromhex('4109c5' if selevet else '4109c4' if pokedinner else '09c5'))
         code.extend(saved);code.extend(rel(0xe9,wrapper+len(code),hook+len(saved)));blob.extend(code)
         frame_register=pe.read(frame[2],4)[3]
         uw=put(bytes([0x21,0,0,frame_register])+struct.pack('<III',*frame))
         functions.append((wrapper,wrapper+len(code),uw))
     else:raise ValueError('Unknown patch profile kind.')
-    functions=sorted(original_functions+functions)
+    # Keep equal-start original records in their existing order. Selevet's
+    # linker emits one folded funclet twice, with identical stack-unwind codes.
+    functions=sorted(original_functions+functions,key=lambda f:f[0])
+    original_set=set(original_functions)
     for a,b in zip(functions,functions[1:]):
-        if a[1]>b[0]:raise ValueError('Overlapping unwind functions.')
+        if a[1]<=b[0]:continue
+        duplicate=(profile.get('preserve_duplicate_unwind') and a[:2]==b[:2]
+                   and a in original_set and b in original_set)
+        if duplicate:
+            first,second=pe.read(a[2],4),pe.read(b[2],4)
+            duplicate=(first[0]&7==second[0]&7==1 and first[1:]==second[1:]
+                       and not (first[0]|second[0])&0x20
+                       and pe.read(a[2]+4,first[2]*2)==pe.read(b[2]+4,second[2]*2))
+        if not duplicate:raise ValueError('Overlapping unwind functions.')
     exception=put(b''.join(struct.pack('<III',*f) for f in functions))
     raw=align(len(data),pe.file_align);raw_size=align(len(blob),pe.file_align)
     result=bytearray(data);result.extend(bytes(raw-len(result)));result.extend(blob)
