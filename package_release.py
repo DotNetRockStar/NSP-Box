@@ -9,10 +9,10 @@ sys.path.insert(0,str(ROOT/'src'))
 import engine
 
 DOCS=('README.md','BUILD.md','TECHNICAL_NOTES.md','PERFORMANCE_NOTES.md','CHANGELOG.md',
-      'LICENSE.txt','THIRD_PARTY_NOTICES.md','RELEASE_VALIDATION.md','GITHUB_RELEASES.md','DISCLAIMER.md','EMULATOR_PATCH.md','DLC.md')
+      'LICENSE.txt','THIRD_PARTY_NOTICES.md','RELEASE_VALIDATION.md','GITHUB_RELEASES.md','DISCLAIMER.md','EMULATOR_PATCH.md','DLC.md','NUP.md')
 SOURCE=('Packager.spec','app.ico','requirements-build.txt','package_release.py','frozen_smoke.py',
         'test_engine.py','test_ui.py','test_artwork.py','test_performance_safety.py','test_nsp.py','test_compatibility.py',
-        'test_emulator_patch.py','test_dlc.py','test_file_drops.py','native/container_probe.c','native/build_probe.py','native/build_patterns.py','native/check_emulator_startup.py','.gitignore')
+        'test_emulator_patch.py','test_dlc.py','test_file_drops.py','test_nup.py','test_nup_ui.py','test_nup_optimization.py','test_nup_polish.py','frozen_nup_smoke.py','native/container_probe.c','native/build_probe.py','native/build_patterns.py','native/check_emulator_startup.py','.gitignore')
 
 def source_files():
     paths=[ROOT/p for p in DOCS+SOURCE]
@@ -29,7 +29,8 @@ def notes():
     text=(ROOT/'CHANGELOG.md').read_text(encoding='utf-8')
     match=re.search(r'^## '+re.escape(engine.VERSION)+r'[^\n]*\n(.*?)(?=^## |\Z)',text,re.M|re.S)
     if not match:raise ValueError('Add changelog notes for '+engine.VERSION)
-    return ('# NSP Box '+engine.VERSION+'\n\n'+match.group(1).strip()+
+    heading=match.group(0).splitlines()[0].removeprefix('## ').strip()
+    return ('# NSP Box '+heading+'\n\n'+match.group(1).strip()+
             '\n\nPiracy is not supported. This independent project is not affiliated with Nintendo. '
             'Nintendo and other rights holders retain ownership of their content and marks. '
             'No games, firmware or retail keys are included. See DISCLAIMER.md.\n')
@@ -65,6 +66,7 @@ def main():
           'pyinstaller':version('PyInstaller'),'pyinstaller_hooks':version('pyinstaller-hooks-contrib'),
           'tcl':tkinter.Tcl().eval('info patchlevel'),'openssl':ssl.OPENSSL_VERSION,
           'source_commit':os.environ.get('GITHUB_SHA'),'code_license':'MIT','ai_assisted':True,'signed':False,
+          'zstandard':version('zstandard'),
           'executable_sha256':hashlib.sha256((release/binary).read_bytes()).hexdigest()}
     (release/'BUILD_INFO.json').write_text(json.dumps(info,indent=2),encoding='utf-8')
     manifest=''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.relative_to(release).as_posix()+'\n'

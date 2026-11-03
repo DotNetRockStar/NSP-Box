@@ -1,5 +1,40 @@
 # Release notes
 
+## 4.0.0 — Meet NUP
+
+Smaller archives, flexible packaging, and more control over your game collection. Version 4.0 introduces **NUP Tools**, alongside the existing NSP builder.
+
+### Package more. Store less.
+
+- **Create compressed NUP archives** from extracted game folders, with base games, updates and DLC together in one file.
+- **Choose your balance:** Fast for quicker compression, Balanced for everyday use, or Smaller for stronger compression. Incompressible files are stored raw automatically.
+- **Keep what you need:** select Base, Updates and DLC independently. Choices appear after inspection, only for content present in your source. Latest-snapshot mode merges the newest selected update with the selected base, retains required base-only files, and leaves superseded versions behind. Turn it off to keep separate base/update records.
+- **Avoid duplicate storage:** identical file contents can share the same space inside an archive.
+- **Stay compatible:** leave files larger than 256 MiB uncompressed to reduce temporary decompression work in supported emulators.
+
+### Convert, extract and check
+
+- **NSP → NUP:** compress plaintext NSPs created by NSP Box.
+- **NUP → NSP:** reconstruct complete game snapshots and export DLC as separate installable NSPs.
+- **NUP → Folder:** extract your selected content back into folders.
+- **Inspect / Verify:** check metadata, compression statistics and file integrity.
+- **Make it yours:** add a custom title and square-cropped artwork when packaging folders.
+
+Operations include progress and cancellation. Results save beside the source, with numbered filenames protecting existing outputs.
+
+### Fixes and compatibility
+
+- Faster source inspection, reused file indexes and less duplicate compression work.
+- Removed the artificial **32 GiB NSP limit**; format, filesystem and free-space limits still apply. Thanks to [@hlebushekhub](https://github.com/hlebushekhub) for reporting [#8](https://github.com/smarkyie/NSP-Box/issues/8).
+- Fixed the Zstandard **“Frame requires too much memory”** decoding error.
+- Updated guidance for **PokeDinner 2.5.0**, which includes native NSP support without the patch or external `main.npdm`.
+
+Thanks to **a55uka** and the [NUP project](https://github.com/a55uka/nup) for the format specification and documentation, and **Franseven**, PokeDinner’s creator, for integrating native support.
+
+*NUP loading and DLC mounting depend on your emulator. Separate DLC NSPs remain available where needed.*
+
+**Help shape the next build.** Version 4.0 is experimental and has limited testing. If something breaks, [open an issue](https://github.com/smarkyie/NSP-Box/issues/new) with your app/emulator versions and reproduction steps. Please keep games, keys and personal information out of reports.
+
 ## 3.1.0 — 2026-11-02
 
 - **Selevet support:** the emulator patcher now supports Selevet Eglantine performance build 4, including both normal and 30 FPS Windows downloads.

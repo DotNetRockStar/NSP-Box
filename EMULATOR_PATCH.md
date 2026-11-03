@@ -1,5 +1,12 @@
 # NSP Box — experimental emulator patch
 
+**PokeDinner 2.5.0 and newer builds with native NSP support do not need this patch
+or an external `main.npdm`.** Thank you to **Franseven**, the creator of PokeDinner,
+for integrating support. The [2.5.0 release notes](https://git.eden-emu.dev/Franseven/PokeDinner-a-Eglantine-Fork/releases/tag/2.5.0)
+list native Switch 2 NSP and NUP support. Older PokeDinner builds listed below still
+use the reversible patch. The native-support notice is based on upstream release
+notes; it does not add a new binary patch profile or claim gameplay validation.
+
 Open **Emulator patch** in the NSP Box header. Select the folder containing the
 Windows x64 emulator executable, close that emulator, then use **Add patch** (or
 **Try patch** for an unverified match). Restart it normally. To undo, select the

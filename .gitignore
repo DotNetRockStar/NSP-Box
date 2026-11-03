@@ -25,3 +25,7 @@ title.keys*
 
 .venv-linux/
 local-linux-build/
+
+# Local previews and NUP outputs
+/dist-*/
+*.nup

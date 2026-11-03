@@ -202,30 +202,21 @@ class InterfaceTests(unittest.TestCase):
             self.assertFalse(self.errors)
         finally:dialog.close()
 
-    def test_startup_caution_and_remembered_dismissal(self):
-        from startup_notice import should_show
+    def test_no_startup_modal_and_persistent_game_guidance(self):
         app=self.app;preferences=app.preferences_path
         app.show_startup_caution();self.pump(.08)
-        notice=app._startup_dialog
-        self.assertTrue(notice.winfo_exists());self.assertEqual(app.grab_current(),notice)
+        self.assertIsNone(app._startup_dialog);self.assertIsNone(app._startup_job);self.assertIsNone(app.grab_current())
         self.assertFalse(preferences.exists())
-        self.assertGreater(notice.winfo_height(),300)
-        self.assertLessEqual(notice.continue_button.winfo_rooty()+notice.continue_button.winfo_height(),notice.winfo_rooty()+notice.winfo_height())
-        notice.continue_button.invoke();self.pump(.03)
-        self.assertTrue(should_show(preferences))
-        app.show_startup_caution();self.pump(.03)
-        app._startup_dialog.dismiss_check.invoke();app._startup_dialog.continue_button.invoke();self.pump(.03)
-        self.assertFalse(should_show(preferences));app.show_startup_caution()
-        self.assertFalse(app._startup_dialog.winfo_exists());self.assertIsNone(app.grab_current())
-        preferences.write_text('{invalid json',encoding='utf-8')
-        self.assertTrue(should_show(preferences))
+        self.assertTrue(app.game_run_note.winfo_ismapped())
+        self.assertIn('main.npdm',app.game_run_note.text);self.assertIn('Emulator patch',app.game_run_note.text)
+        self.assertIn('Newer PokeDinner',app.game_run_note.text)
         self.assertFalse(self.errors)
 
     def test_explicit_emulator_setup_from_notes(self):
         import compatibility
         app=self.app;app.notes();self.pump(.05)
         notes=next(w for w in app.winfo_children() if w.winfo_class()=='Toplevel')
-        setup=next(w for w in notes.winfo_children() if w.winfo_class()=='TButton' and w.cget('text')=='Set up emulator keys folder…')
+        setup=next(w for frame in notes.winfo_children() for w in frame.winfo_children() if w.winfo_class()=='TButton' and w.cget('text')=='Set up emulator keys folder…')
         folder=self.root/'emulator-keys'
         with patch('app.filedialog.askdirectory',return_value=str(folder)),patch('app.messagebox.showinfo') as info:
             setup.invoke()

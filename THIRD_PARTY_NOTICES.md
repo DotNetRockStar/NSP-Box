@@ -7,6 +7,8 @@ The app's MIT license applies to its original Python source. Bundled dependencie
 | CPython | 3.11.9 x64 | `licenses/CPython-LICENSE.txt` (PSF and included component notices) |
 | Tcl/Tk | 8.6, as supplied with CPython | `licenses/Tcl-license.terms`, `licenses/Tk-license.terms` |
 | Pillow | 12.2.0 | `licenses/Pillow-LICENSE.txt` (MIT-CMU and included library notices) |
+| python-zstandard | 0.25.0 | `licenses/python-zstandard-LICENSE.txt` (BSD 3-Clause) |
+| Zstandard | 1.5.7 | `licenses/Zstandard-LICENSE.txt` (BSD license option) |
 | PyInstaller bootloader | 6.19.0 | `licenses/PyInstaller-COPYING.txt` (GPL with bootloader exception) |
 | OpenSSL | Runtime version recorded in BUILD_INFO.json | `licenses/OpenSSL-LICENSE.txt` (Apache License 2.0) |
 | Microsoft Visual C++ runtime | Redistributable supplied with CPython | Microsoft runtime component; ownership and terms remain with Microsoft. |

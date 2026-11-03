@@ -1,4 +1,4 @@
-# Experimental DLC packaging — NSP Box 3.0
+# DLC packaging — NSP Box
 
 The **DLC** tab packages a complete extracted add-on RomFS into a separate
 plaintext NSP. It does not change or merge into your base-game package.

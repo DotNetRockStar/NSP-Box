@@ -1,10 +1,22 @@
 # NSP Box: A Switch 2 Game Packager
 
+**NSP Box 4.0 — Meet NUP.** Create compressed NUP archives from extracted game
+folders, convert plaintext NSP ↔ NUP, extract selected content, and inspect or verify
+archives. See [NUP.md](NUP.md) for content selection, update merging, compression,
+DLC compatibility and storage requirements.
+
 [Download](https://github.com/smarkyie/NSP-Box/releases/latest) · [Build from source](BUILD.md) · [Changelog](CHANGELOG.md) · [Disclaimer](DISCLAIMER.md)
 
 A portable Windows app that packages a complete, already-extracted ExeFS/RomFS snapshot into a plaintext NSP for compatible emulators. Choose a folder, add your own artwork, and build an NSP.
 
-**NSP Box 3.1** adds emulator-patch support for [Selevet performance build 4](https://github.com/sylvieistaken/selevet-eglantine/releases/tag/selevet-eglantine-performance-4), both normal and 30 FPS downloads, plus fingerprint matching for compatible minor updates. Future matches are experimental and still require a unique reviewed loader and metadata reader. The app includes redesigned icons, a subtle animated blue/indigo background and smooth transitions. It retains the NSP-only Game/DLC workflows and the Windows drag-and-drop fix for [issue #2](https://github.com/smarkyie/NSP-Box/issues/2). Native drop events queue paths for Tk to handle safely during its normal event loop.
+Version 4.0 adds NUP Tools with Fast/Balanced/Smaller compression, source-aware
+Base / Updates / DLC selection, a smaller latest-game snapshot option, custom title
+and cropped artwork, and automatic output beside the source. Source inspection
+reuses its file index, duplicate data can share storage, the artificial 32 GiB NSP
+cap is removed, and valid larger-window Zstandard frames now decode correctly.
+Thanks to **a55uka** and the [NUP project](https://github.com/a55uka/nup) for the
+format specification, and [@hlebushekhub](https://github.com/hlebushekhub) for
+reporting the file-size cap in [#8](https://github.com/smarkyie/NSP-Box/issues/8).
 
 Use **Game** for complete ExeFS/RomFS snapshots and **DLC** for separate RomFS-only add-ons. A user installed the Bananza DLC NSP and confirmed that the game recognized it in PokeDinner 2.0.0. This is one successful user test, not universal DLC compatibility. See [DLC instructions](DLC.md).
 
@@ -14,9 +26,9 @@ The reversible **Emulator patch** panel now lists its supported Windows x64 targ
 
 > **Caution — experimental software:** set emulator memory to **12 GiB** before testing Switch 2 packages. The app does not change this setting. The patch is optional and only applies to recognized compatible code; it cannot add Switch 2 emulation to an unsupported emulator. Verification checks package integrity, not booting or gameplay.
 
-A startup caution explains this before using the GUI. **Don't show this again** stores only a local preference under `%LOCALAPPDATA%\NSPBox\preferences.json`; the same guidance remains in **Notes & compatibility**. Command-line builds do not show a dialog.
+The startup modal has been removed. The Game tab shows the two ways to run Switch 2 NSPs: keep each game's own `main.npdm` beside its NSP, or use an emulator listed in Emulator patch with native support or the compatible patch applied. Full guidance remains in **Notes & compatibility**.
 
-**Without the emulator patch**, retain the exact game's external `main.npdm` in its own package folder. Selecting 12 GiB alone can boot with Switch 1 timing and reduced performance. The corrected patch matches external-NPDM startup timing in the checked builds; equal FPS across all games/builds is not guaranteed.
+**PokeDinner 2.5.0 and newer builds with native NSP support need no patch or external `main.npdm`.** Thanks to **Franseven**, PokeDinner's creator, for integrating support; [2.5.0 release notes](https://git.eden-emu.dev/Franseven/PokeDinner-a-Eglantine-Fork/releases/tag/2.5.0) list Switch 2 NSP/NUP support. This is native format support, not a guarantee that every game works. Older builds without native detection need the exact game's external `main.npdm` or a supported patch. Use separate folders for different games' companion files. The file is `main.npdm`, not the `exefs/main` executable. Selecting 12 GiB alone can use incorrect timing on older, unpatched builds.
 
 NSP output streams directly to its destination without an intermediate container. The app includes square artwork cropping, clipboard and drag-and-drop support, progress/cancellation, and full output verification.
 
@@ -31,13 +43,15 @@ NSP output streams directly to its destination without an intermediate container
 5. Edit the displayed game name/version if needed. Add, drop or paste artwork, then click **Crop icon** to position it. Select an NSP destination filename in Output.
 6. Leave **Verify after building** checked. **Create package folder** beneath it is on by default: a folder named after the output file contains the package, a metadata companion and JSON verification report. Uncheck it to save only the selected NSP. Then click **Build NSP**.
 
-The app never overwrites an existing package and does not modify your source files. Cancellation removes the unfinished package. Verification works in both modes; it does not require saving a report. Allow roughly the input size plus 2% and 32 MB free disk space. Packages up to **32 GiB** are supported.
+The app never overwrites an existing package and does not modify your source files. Cancellation removes the unfinished package. Verification works in both modes; it does not require saving a report. Allow roughly the input size plus 2% and 32 MB free disk space. The previous 32 GiB NSP cap has been removed; larger games are supported within the format, destination filesystem and available-space limits. See [large-file limits](NUP.md#large-games).
 
 With **Create package folder** enabled, `D:\Packed\Game.nsp` is saved as `D:\Packed\Game\Game.nsp`, with `main.npdm` and `Game.nsp.report.json` beside it. The companion is an optional workaround for the checked loader's early Switch 2 memory/clock detection. Keep each game/snapshot in a separate folder if using it; a conflicting companion is refused. The exact snapshot metadata is also embedded inside the package in both modes. After applying the emulator patch, the companion is unnecessary for supported containers: the emulator reads the embedded metadata. Keep the original companion as a backup if you plan to remove the patch.
 
 NSP is a PFS0 container with Program, Control and Meta NCAs for games, or Data and Meta NCAs for DLC. It is not compressed. Outputs are unsigned plaintext emulator repacks; this does not make them authenticated retail-console packages. Loading depends on the emulator's plaintext-content support. NSP Box does not create XCI files.
 
 ## Use the emulator patch
+
+PokeDinner 2.5.0 and newer builds with native NSP support can skip these steps.
 
 1. Fully close the emulator and open **Emulator patch** in the packager header.
 2. Select the folder containing the Windows x64 Selevet/Eglantine/PokeDinner executables, then **Check** and **Add patch**. Matching unverified builds offer **Try patch** with an experimental warning.

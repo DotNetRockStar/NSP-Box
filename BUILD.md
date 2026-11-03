@@ -51,7 +51,7 @@ Optional command-line packaging:
 - `src/engine.py`: snapshot discovery, metadata/artwork handling, build orchestration and verification.
 - `src/container_format.py`: streaming PFS0/HFS0/RomFS/NCA writers.
 - `src/verify_format.py`: independent bounded reader and integrity checks.
-- `src/startup_notice.py`: startup caution and local dismissal preference.
+- `src/startup_notice.py`: legacy notice/preference helper, retained for older-source compatibility; the GUI no longer opens a startup notice.
 - `src/compatibility.py`: explicit, non-destructive setup for plaintext-repack placeholder entries.
 - `test_engine.py`: synthetic Unicode/multi-version round trip, artwork handling, cancellation cleanup, no-overwrite and invalid-input cases.
 - `test_ui.py`: synthetic end-to-end UI build, native shell folder/artwork drops, original control retention, motion interpolation and minimum-size visibility checks. Run on Windows with a desktop session available.
