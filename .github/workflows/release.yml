@@ -33,11 +33,13 @@ jobs:
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
       - name: Run synthetic tests
-        run: python -m unittest test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops
+        run: python -m unittest test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization test_nup_polish
       - name: Build portable executable
         run: python -m PyInstaller --noconfirm --clean Packager.spec
       - name: Check frozen NSP builds
         run: python frozen_smoke.py
+      - name: Check frozen NUP tools
+        run: python frozen_nup_smoke.py
       - name: Assemble allowlisted release
         run: python package_release.py
       - name: Publish release
@@ -50,5 +52,6 @@ jobs:
           $tag = 'v' + $version
           $assets = @(Get-ChildItem -LiteralPath release -Filter '*.zip' -File | ForEach-Object FullName)
           $assets += (Join-Path (Get-Location) 'release/SHA256SUMS.txt')
-          gh release create $tag @assets --target $env:GITHUB_SHA --title "NSP Box $version" --notes-file release/RELEASE_NOTES.md
+          $releaseTitle = (Get-Content -LiteralPath release/RELEASE_NOTES.md -TotalCount 1) -replace '^#\s+', ''
+          gh release create $tag @assets --target $env:GITHUB_SHA --title $releaseTitle --notes-file release/RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Release could not be created. Existing releases are never overwritten; use a new app version.' }
