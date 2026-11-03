@@ -76,7 +76,7 @@ def partition(buf,offset=0):
         result[name]=view
     return result
 
-def nca_sections(buf):
+def nca_sections(buf,verify_payload=True):
     assert bytes(buf[0x200:0x204])==b'NCA3'
     assert u('Q',buf,0x208)[0]==len(buf)
     title=u('Q',buf,0x210)[0];sections=[]
@@ -91,10 +91,12 @@ def nca_sections(buf):
             block,count=u('II',header,0x28);assert count==2
             ho,hs,do,ds=u('4Q',header,0x30)
             hashes=body[ho:ho+hs];data=body[do:do+ds]
-            assert digest(hashes)==bytes(header[8:40]),'PFS master hash'
-            with closing(block_digests(data,block)) as generated:
-                for k,actual in enumerate(generated):
-                    assert actual==bytes(hashes[k*32:k*32+32]),'PFS block hash'
+            assert block>0 and len(hashes)==hs and len(data)==ds,'PFS section bounds'
+            if verify_payload:
+                assert digest(hashes)==bytes(header[8:40]),'PFS master hash'
+                with closing(block_digests(data,block)) as generated:
+                    for k,actual in enumerate(generated):
+                        assert actual==bytes(hashes[k*32:k*32+32]),'PFS block hash'
             sections.append(('pfs',data))
         elif header[3]==3:
             assert bytes(header[8:12])==b'IVFC'
@@ -103,9 +105,10 @@ def nca_sections(buf):
             for j in range(count):
                 off,size,order=u('QQI',header,0x18+j*24);block=1<<order
                 data=body[off:off+size];assert len(data)==size
-                with closing(block_digests(data,block,padded=True)) as generated:
-                    for k,actual in enumerate(generated):
-                        assert actual==bytes(expected[k*32:k*32+32]),('IVFC',j,k)
+                if verify_payload:
+                    with closing(block_digests(data,block,padded=True)) as generated:
+                        for k,actual in enumerate(generated):
+                            assert actual==bytes(expected[k*32:k*32+32]),('IVFC',j,k)
                 expected=data
             sections.append(('romfs',data))
         else:raise ValueError('Unsupported hash')

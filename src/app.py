@@ -27,30 +27,30 @@ class App(Layout,tk.Tk):
         self.detail=tk.StringVar(value='Select a game folder to begin.')
         self.style();self.layout()
         from dlc_panel import DlcPanel
-        self.dlc_panel=DlcPanel(self);self.active_tab='game'
+        self.dlc_panel=DlcPanel(self)
+        from nup_panel import NupPanel
+        self.nup_panel=NupPanel(self);self.active_tab='game'
         self.protocol('WM_DELETE_WINDOW',self.close);self._poll_job=self.after(100,self.poll)
         self.bind_all('<Control-v>',self.paste_art_shortcut,add='+')
         self.bind_all('<Control-V>',self.paste_art_shortcut,add='+')
-        if show_startup:self._startup_job=self.after(180,self.show_startup_caution)
+        # Startup guidance lives in the Game tab and Notes, without a modal.
 
     def show_startup_caution(self):
         self._startup_job=None
-        if self._startup_dialog is not None and self._startup_dialog.winfo_exists():return
-        if should_show(self.preferences_path):self._startup_dialog=StartupNotice(self,self.preferences_path)
 
     def show_tab(self,tab):
-        if self.busy or self.scanning or self.dlc_panel.busy:return
+        if self.busy or self.scanning or self.dlc_panel.busy or self.nup_panel.busy:return
         if tab==self.active_tab:return
         self.active_tab=tab
-        if tab=='dlc':
-            self.content_area.pack_forget();self.game_footer.pack_forget()
-            self.dlc_panel.pack(fill='both',expand=True)
+        self.content_area.pack_forget();self.game_footer.pack_forget();self.dlc_panel.pack_forget();self.nup_panel.pack_forget()
+        if tab in ('dlc','nup'):
+            (self.dlc_panel if tab=='dlc' else self.nup_panel).pack(fill='both',expand=True)
         else:
-            self.dlc_panel.pack_forget();self.game_footer.pack(side='bottom',fill='x')
+            self.game_footer.pack(side='bottom',fill='x')
             self.content_area.pack(fill='both',expand=True,padx=20,pady=(0,12))
-        for button,selected in ((self.game_tab_button,tab=='game'),(self.dlc_tab_button,tab=='dlc')):
+        for button,selected in ((self.game_tab_button,tab=='game'),(self.dlc_tab_button,tab=='dlc'),(self.nup_tab_button,tab=='nup')):
             button.set_selected(selected)
-        self.enter_panels(self.dlc_panel.panels if tab=='dlc' else self.panels)
+        self.enter_panels(self.dlc_panel.panels if tab=='dlc' else (self.nup_panel.panels if tab=='nup' else self.panels))
 
     def pick_folder(self):
         value=filedialog.askdirectory(title='Select main game dump folder',parent=self)
@@ -119,7 +119,7 @@ class App(Layout,tk.Tk):
         finally:self._art_editor=None
 
     def paste_art_shortcut(self,event=None):
-        if self.active_tab=='dlc':return None
+        if self.active_tab!='game':return None
         return 'break' if self.paste_art(quiet=True) else None
 
     def paste_art(self,quiet=False):
@@ -224,17 +224,22 @@ class App(Layout,tk.Tk):
         except OSError as error:messagebox.showerror('Could not open folder',str(error),parent=self)
 
     def notes(self):
-        w=tk.Toplevel(self);w.title('Notes & compatibility');w.geometry('650x650');w.configure(bg=BG)
+        w=tk.Toplevel(self);w.title('Notes & compatibility');w.geometry('680x690');w.configure(bg=BG)
         ttk.Label(w,text='Before sharing or packaging',style='Section.TLabel').pack(anchor='w',padx=24,pady=(22,12))
         text=('Select a complete decrypted game snapshot: sibling exefs and romfs folders. You may also select a main folder containing base and updates subfolders, then choose a snapshot.\n\n'
-              'An update folder must contain a complete mounted filesystem, not only changed files. The app cannot determine completeness from file names. Separate updates, DLC and multi-program titles are not combined automatically.\n\n'
+              'The Game tab requires a complete snapshot, not only changed files. NUP Tools can bundle selected Base / Updates / DLC records; its smaller snapshot mode overlays the latest selected update over the selected base. An exefs/main file alone does not prove that an update is complete. DLC stays separate.\n\n'
               'NSP Box creates unsigned plaintext NSP packages, streamed directly without an intermediate container. Packaging cannot add emulator support for a game. Original control metadata is preserved when present; otherwise basic metadata is generated.\n\n'
-              'Experimental compatibility: set emulator memory to 12 GiB before testing Switch 2 packages. Use Emulator patch in the header to add or remove embedded-metadata detection in compatible Windows x64 Eglantine/PokeDinner builds. After applying the patch and restarting, a separate main.npdm is not needed. Without the patch, retain each game with its own external main.npdm: 12 GiB alone can use incorrect timing and reduce performance. Future builds may not match. The app does not change memory settings. Create package folder remains on by default and includes a companion/report; uncheck it to save only the NSP. Verification does not guarantee booting, gameplay or performance.\n\n'
+              'Running Switch 2 NSP games: (1) Keep the game’s own main.npdm beside its NSP, preferably in a separate folder for each game; or (2) use an emulator with native embedded-metadata support, or a supported older build with Emulator patch applied. The required external file is main.npdm, not the exefs/main executable. PokeDinner 2.5.0 and newer builds with native NSP support do not need this patch or the external file. Thanks to Franseven, creator of PokeDinner, for integrating support. Older PokeDinner builds remain patch targets.\n\n'
+              'Set emulator memory to 12 GiB where the emulator requires it. The memory setting alone can select incorrect timing on older, unpatched builds and reduce performance. Create package folder includes each game’s companion/report by default; uncheck it to save only the NSP. The app does not change emulator memory settings. Verification does not guarantee booting, gameplay or performance.\n\n'
+              'NUP Tools saves results beside the source automatically and numbers existing names. Folder → NUP offers optional title and square-cropped artwork. Use Inspect / Verify for a NUP integrity check. NUP DLC mounting depends on the emulator; convert DLC to NSP to install it where needed.\n\n'
               'For missing-key errors, close the emulator and use Set up emulator keys folder below. It adds only missing local placeholders, preserves existing entries and prod.keys, and backs up an existing autogenerated file. These are not Nintendo keys and cannot decrypt retail content. Setup is never automatic.\n\n'
               'See the included README, TECHNICAL_NOTES and source folder for the format, tests, limitations and build instructions.')
-        ttk.Label(w,text=text,wraplength=595,justify='left').pack(padx=24,anchor='w')
-        ttk.Button(w,text='Export plaintext compatibility file…',command=lambda:self.export_keys(w)).pack(anchor='w',padx=24,pady=18)
-        ttk.Button(w,text='Set up emulator keys folder…',command=lambda:self.setup_compatibility(w)).pack(anchor='w',padx=24)
+        buttons=tk.Frame(w,bg=BG);buttons.pack(side='bottom',fill='x',padx=24,pady=18)
+        ttk.Button(buttons,text='Export plaintext compatibility file…',command=lambda:self.export_keys(w)).pack(anchor='w',pady=(0,8))
+        ttk.Button(buttons,text='Set up emulator keys folder…',command=lambda:self.setup_compatibility(w)).pack(anchor='w')
+        from tkinter.scrolledtext import ScrolledText
+        body=ScrolledText(w,bg=BG,fg=TEXT,relief='flat',bd=0,wrap='word',font=('Segoe UI',10),padx=4,pady=4)
+        body.pack(fill='both',expand=True,padx=20);body.insert('1.0',text);body.configure(state='disabled')
 
     def emulator_patch(self):
         from emulator_dialog import EmulatorDialog
@@ -263,6 +268,7 @@ class App(Layout,tk.Tk):
             except Exception as e:messagebox.showerror('Export failed',str(e),parent=parent)
 
     def close(self):
+        if self.nup_panel.busy:self.nup_panel.cancel();return
         dialog=getattr(self,'_emulator_dialog',None)
         if dialog is not None and dialog.winfo_exists():
             if dialog.working:dialog.lift();dialog.message.set('Wait for the emulator patch operation to finish before closing.');return
@@ -271,7 +277,7 @@ class App(Layout,tk.Tk):
             self.dlc_panel.cancel();return
         if self.busy:
             self.cancel();self.detail.set('Cancelling the build. Close the app again after cleanup finishes.');return
-        self.dlc_panel.close()
+        self.dlc_panel.close();self.nup_panel.close()
         if self._drops:self._drops.close()
         if self._startup_job:self.after_cancel(self._startup_job)
         if self._startup_dialog is not None and self._startup_dialog.winfo_exists():
@@ -318,6 +324,9 @@ def cli(argv):
     return result
 
 def main():
+    if '--nup-operation' in sys.argv:
+        import nup_cli
+        return nup_cli.main(sys.argv[1:])
     if '--package' in sys.argv:
         try:result=cli(sys.argv[1:]);print(json.dumps(result,indent=2));return 0
         except Exception as e:

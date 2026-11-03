@@ -107,7 +107,7 @@ def surface(c,w,h,fill,border,radius=17,gradient=None):
 
 class Motion:
     def __init__(self,root):self.root=root;self.enabled=True;self.jobs={};self.closed=False
-    def to(self,key,initial,final,duration,update,done=None):
+    def to(self,key,initial,final,duration,update,done=None,easing=None):
         if self.closed:return
         old=self.jobs.pop(key,None)
         if old:
@@ -120,7 +120,7 @@ class Motion:
         started=time.perf_counter()
         def tick():
             if self.closed or not self.root.winfo_exists():return
-            t=min(1,(time.perf_counter()-started)/duration);ease=1-(1-t)**4
+            t=min(1,(time.perf_counter()-started)/duration);ease=easing(t) if easing else 1-(1-t)**4
             try:update(initial+(final-initial)*ease)
             except tk.TclError:self.jobs.pop(key,None);return
             if t<1:self.jobs[key]=self.root.after(16,tick)
@@ -204,6 +204,7 @@ class Button(tk.Canvas):
 
 class Panel(tk.Canvas):
     def __init__(self,parent,**kw):
+        self.fluid_resize=kw.pop('fluid_resize',False);self._fluid_width=None
         kw.setdefault('width',1);kw.setdefault('height',1)
         super().__init__(parent,bg=BG,highlightthickness=0,bd=0,**kw)
         self.inner=tk.Frame(self,bg=PANEL);self.inner_id=self.create_window(1,1,anchor='nw',window=self.inner)
@@ -211,11 +212,34 @@ class Panel(tk.Canvas):
         backdrop=getattr(self.winfo_toplevel(),'_ambient',None)
         if backdrop is not None:backdrop.register(self)
     def resize(self,event):
-        self.delete('surface');surface(self,event.width,event.height,PANEL,'#263750',22)
+        if self.fluid_resize and event.height>=52:
+            self.resize_fluid_surface(event.width,event.height)
+        else:
+            self._fluid_width=None
+            self.delete('surface');surface(self,event.width,event.height,PANEL,'#263750',22)
         self.tag_lower('surface')
         if self.find_withtag('ambient'):self.tag_lower('ambient')
         self.coords(self.inner_id,15,14)
         self.itemconfigure(self.inner_id,width=max(1,event.width-30),height=max(1,event.height-28))
+
+    def resize_fluid_surface(self,width,height):
+        """Reuse rounded caps while height changes; avoid full-card rasterization."""
+        cap=24
+        if self._fluid_width!=width:
+            self.delete('surface')
+            art=surface_art(max(1,width),52,PANEL,'#263750',22,None)
+            self._fluid_photos=(ImageTk.PhotoImage(art.crop((0,0,width,cap)),master=self),
+                                ImageTk.PhotoImage(art.crop((0,52-cap,width,52)),master=self))
+            self._fluid_middle=self.create_rectangle(2,cap,width-2,height-cap,fill=PANEL,outline='',tags='surface')
+            self._fluid_left=self.create_line(1,cap,1,height-cap,fill='#263750',tags='surface')
+            self._fluid_right=self.create_line(width-2,cap,width-2,height-cap,fill='#263750',tags='surface')
+            self.create_image(0,0,image=self._fluid_photos[0],anchor='nw',tags='surface')
+            self._fluid_bottom=self.create_image(0,height-cap,image=self._fluid_photos[1],anchor='nw',tags='surface')
+            self._fluid_width=width
+        self.coords(self._fluid_middle,2,cap,width-2,height-cap)
+        self.coords(self._fluid_left,1,cap,1,height-cap)
+        self.coords(self._fluid_right,width-2,cap,width-2,height-cap)
+        self.coords(self._fluid_bottom,0,height-cap)
 
 class Entry(tk.Canvas):
     """Rounded field with a genuine native text editor and clean focus states."""
@@ -507,6 +531,8 @@ class Layout:
         self.game_tab_button.pack(side='left',padx=(0,8))
         self.dlc_tab_button=Button(tabs,'DLC',lambda:self.show_tab('dlc'),self.motion,width=108,height=36,quiet=True,kind='dlc')
         self.dlc_tab_button.pack(side='left')
+        self.nup_tab_button=Button(tabs,'NUP Tools',lambda:self.show_tab('nup'),self.motion,width=145,height=36,quiet=True,kind='package-folder')
+        self.nup_tab_button.pack(side='left',padx=(8,0))
         footer=AmbientFrame(self);footer.pack(side='bottom',fill='x')
         self.game_footer=footer
         self.progressbar=Progress(footer,self.motion);self.progressbar.pack(fill='x')
@@ -569,8 +595,8 @@ class Layout:
         self.crop_art_btn=Button(arttools,'Crop icon',self.crop_art,self.motion,width=124,height=31,quiet=True,kind='crop',state='disabled');self.crop_art_btn.pack(side='left')
         self.clear_art_btn=Button(arttools,'Remove',self.clear_art,self.motion,width=99,height=31,quiet=True,kind='remove-artwork');self.clear_art_btn.pack(side='right')
         small=AmbientFrame(area);small.grid(row=2,column=1,sticky='nw',padx=7,pady=8)
-        self.label(small,'Switch 2: set emulator memory to 12 GiB.',color=MUTED,size=9,wraplength=245,justify='left').pack(anchor='w')
-        self.label(small,'Separate DLC and patch files\nare not merged automatically.',color='#738aaa',size=9,justify='left').pack(anchor='w',pady=(5,8))
+        self.game_run_note=self.label(small,'Running Switch 2 NSPs\n1. Keep the game’s main.npdm beside its NSP.\n2. Or use a supported emulator in Emulator patch.\n\nUse each game’s own file. Newer PokeDinner needs no patch.',color=MUTED,size=9,wraplength=245,justify='left')
+        self.game_run_note.pack(anchor='w')
         self.bind('<Configure>',self.resized,add=True)
         self._visual_jobs=set();self.defer_visual(60,self.enter_panels)
         self._drops=None;self.defer_visual(100,self.setup_drops)
@@ -612,6 +638,10 @@ class Layout:
             self.drop_zone.draw()
 
     def receive_drop(self,paths):
+        if getattr(self,'active_tab','game')=='nup':
+            if len(paths)==1:self.nup_panel.receive_drop(paths[0])
+            else:self.nup_panel.status.set('Drop one folder or package at a time.')
+            return
         if getattr(self,'active_tab','game')=='dlc':
             panel=self.dlc_panel
             if panel.busy:return

@@ -206,6 +206,7 @@ def romfs_section(blob):
     return bytes(header),Blob(*parts)
 
 def nca(sections, title_id, content_type, distribution=1):
+    if len(sections)>4:raise ValueError('NCA supports at most four sections.')
     hdr=bytearray(0xc00);hdr[0x200:0x204]=b'NCA3'
     hdr[0x204:0x208]=bytes([distribution,content_type,1,0])
     struct.pack_into('<Q',hdr,0x210,title_id)
@@ -213,6 +214,8 @@ def nca(sections, title_id, content_type, distribution=1):
     parts=[];off=0xc00
     for i,(fsh,body) in enumerate(sections):
         body=body.pad(0x200)
+        if (off+body.size)//512>0xffffffff:
+            raise ValueError('An NCA section exceeds the format limit (32-bit sector offsets, approximately 2 TiB per NCA).')
         struct.pack_into('<IIII',hdr,0x240+16*i,off//512,(off+body.size)//512,0,0)
         hdr[0x280+32*i:0x2a0+32*i]=sha(fsh)
         hdr[0x400+512*i:0x600+512*i]=fsh
@@ -226,6 +229,6 @@ def package(entries, kind='nsp'):
     if kind != 'nsp':
         raise ValueError('NSP Box supports NSP output only.')
     result = filesystem(entries)
-    if result.size > 32 << 30:
-        raise ValueError('This release supports packages up to 32 GiB.')
+    if result.size > 0xffffffffffffffff:
+        raise ValueError('NSP size exceeds the PFS0 64-bit size limit.')
     return result

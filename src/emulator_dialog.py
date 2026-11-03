@@ -9,12 +9,16 @@ from ui import BG,PANEL,TEXT,MUTED,Button,Entry,Panel,ui_font
 class EmulatorDialog(tk.Toplevel):
     def __init__(self,parent):
         super().__init__(parent);self.withdraw();self.title('Emulator patch');self.configure(bg=BG)
-        self.geometry('780x785');self.minsize(740,745);self.transient(parent)
+        self.geometry('800x790');self.minsize(780,780);self.transient(parent)
         self.parent=parent;self.motion=parent.motion;self.working=False;self.view=None;self.events=queue.Queue()
         self.folder=tk.StringVar();self.summary=tk.StringVar(value='Select the folder containing the emulator executable.')
         self.message=tk.StringVar(value='No emulator files have been changed.')
         tk.Label(self,text='Emulator patch',bg=BG,fg=TEXT,font=ui_font(22,True)).pack(anchor='w',padx=24,pady=(22,6))
         tk.Label(self,text='Read Switch 2 metadata inside NSP',bg=BG,fg=MUTED,font=ui_font(11)).pack(anchor='w',padx=24)
+        self.native_notice=tk.Label(self,text='PokeDinner 2.5.0 and newer builds with native NSP support need no patch or external main.npdm.\n'
+                 'Thanks to Franseven, creator of PokeDinner, for integrating support! Older builds are listed below.',
+                 bg=BG,fg='#b9d8ff',font=ui_font(10),justify='left',wraplength=748)
+        self.native_notice.pack(anchor='w',padx=24,pady=(12,0))
         row=tk.Frame(self,bg=BG);row.pack(fill='x',padx=24,pady=(20,14))
         self.entry=Entry(row,textvariable=self.folder,placeholder='Choose a Windows x64 emulator folder');self.entry.pack(side='left',fill='x',expand=True)
         self.browse=Button(row,'Browse',self.pick,self.motion,width=105,height=41,kind='folder');self.browse.pack(side='right',padx=(10,0))
@@ -41,9 +45,9 @@ class EmulatorDialog(tk.Toplevel):
         self.check_button=Button(buttons,'Check build',self.check,self.motion,width=145,kind='check-emulator');self.check_button.pack(side='left')
         self.protocol('WM_DELETE_WINDOW',self.close);self.job=self.after(70,self.poll)
         self.update_idletasks()
-        x=max(0,parent.winfo_rootx()+(parent.winfo_width()-780)//2)
-        y=max(0,parent.winfo_rooty()+(parent.winfo_height()-785)//2)
-        self.geometry(f'780x785{x:+d}{y:+d}');self.deiconify()
+        x=max(0,parent.winfo_rootx()+(parent.winfo_width()-800)//2)
+        y=max(0,parent.winfo_rooty()+(parent.winfo_height()-790)//2)
+        self.geometry(f'800x790{x:+d}{y:+d}');self.deiconify()
     def pick(self):
         folder=filedialog.askdirectory(parent=self,title='Select the folder containing the emulator executable')
         if folder:self.folder.set(folder);self.check()

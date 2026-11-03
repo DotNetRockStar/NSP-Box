@@ -8,7 +8,7 @@ import verify_format as verifier
 from artwork import artwork_bytes, ArtworkSelection
 from compatibility import placeholder_text
 
-VERSION = '3.1.0'
+VERSION = '4.0.0'
 
 @dataclass
 class Snapshot:

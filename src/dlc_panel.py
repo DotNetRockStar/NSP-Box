@@ -85,7 +85,7 @@ class DlcPanel(AmbientFrame):
         self.label(info.inner, 'Base NSP (optional)', color=MUTED, size=9).pack(anchor='w')
         self.base_entry = self.path_field(info.inner, self.base_game, 'Check the base-game mapping', self.pick_base)
         self.base_entry.bind('<Return>', lambda event: self.scan())
-        self.label(info.inner, 'Experimental DLC support', size=12, color='#ffc36a').pack(anchor='w', pady=(12,8))
+        self.label(info.inner, 'Install DLC', size=12, color=TEXT).pack(anchor='w', pady=(12,8))
         self.label(info.inner, '1. Build the DLC package.\n\n'
                    '2. In the emulator, use File → Install Files to NAND (wording varies). Select the DLC NSP.\n\n'
                    '3. Open the base game’s Properties → Add-ons and enable the DLC. Restart the game.\n\n'
