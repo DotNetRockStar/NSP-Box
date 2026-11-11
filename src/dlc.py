@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import hashlib, mmap, os, re, shutil, stat, struct, time, uuid
 import container_format as fmt
+import portable
 import verify_format as reader
 
 BASE_MASK = 0xffffffffffffe000
@@ -58,11 +59,11 @@ def find_snapshots(folder, title_id=None):
         fmt.checkpoint()
         if linked(path):
             raise ValueError('Linked folders are not supported: ' + str(path))
-        romfs = path / 'romfs'
+        romfs = portable.child(path, 'romfs')
         if romfs.is_dir():
             if linked(romfs):
                 raise ValueError('Linked RomFS folders are not supported.')
-            if (path / 'exefs' / 'main').is_file():
+            if (portable.child(path, 'exefs') / 'main').is_file():
                 raise ValueError('This contains a game executable. Use the Game tab for full game snapshots.')
             ancestors = list(path.parents)[:4]
             candidates = [p for p in [path] + ancestors if re.fullmatch(r'[0-9a-fA-F]{16}', p.name)]
@@ -89,9 +90,10 @@ def find_snapshots(folder, title_id=None):
     return found
 
 
-def inventory(snapshot, notify=lambda *a: None):
+def inventory(snapshot, notify=lambda *a: None, ignored=None):
+    """DLC RomFS files by path -> (size, mtime); OS metadata is skipped (and listed in `ignored`)."""
     result = {}
-    root = snapshot.root / 'romfs'
+    root = portable.child(snapshot.root, 'romfs')
     if linked(root):
         raise ValueError('Linked source folders are not supported.')
 
@@ -106,6 +108,10 @@ def inventory(snapshot, notify=lambda *a: None):
                 if entry.is_dir(follow_symlinks=False):
                     visit(p)
                 elif entry.is_file(follow_symlinks=False):
+                    if portable.is_os_metadata(p):
+                        if ignored is not None:
+                            ignored.append(p.relative_to(root).as_posix())
+                        continue
                     result[p] = (st.st_size, st.st_mtime_ns)
                     if len(result) % 256 == 0:
                         notify(f'Checking DLC source files · {len(result):,} found', 1)
@@ -189,7 +195,7 @@ def verify(path, snapshot, sources, notify=lambda *a: None, captured=None):
         assert int.from_bytes(bytes(c[at+48:at+54]), 'little') == len(files[name]), 'CNMT Data size'
         assert (c[at+54], c[at+55]) == (2, 0), 'CNMT Data record type/index'
         packed = reader.romfs_files(next(b for k, b in parsed[4] if k == 'romfs'))
-        original = {p.relative_to(snapshot.root/'romfs').as_posix(): p for p in sources}
+        original = {p.relative_to(portable.child(snapshot.root, 'romfs')).as_posix(): p for p in sources}
         assert set(original) == set(packed), 'DLC RomFS file list'
         total = sum(st[0] for st in sources.values())
         done = 0
@@ -219,13 +225,15 @@ def build(snapshot, output, output_format=None, verify_output=True, base_game=No
     if info:
         validate_base(snapshot, info)
     notify('Checking DLC source files', 1)
-    sources = inventory(snapshot, notify)
+    ignored = []
+    sources = inventory(snapshot, notify, ignored)
     output.parent.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output.parent).free < sum(s[0] for s in sources.values()) * 1.02 + 32*1024*1024:
         raise ValueError('Not enough free disk space for the DLC package.')
     phase = [2, 24, 'Building DLC integrity tree']
     fmt.configure(cancel, lambda done, total: notify(phase[2], phase[0]+(phase[1]-phase[0])*done/max(1,total)))
-    romfs = fmt.romfs(snapshot.root/'romfs', [], lambda n: notify(f'Building DLC RomFS · {n:,} files', 2))
+    romfs = fmt.romfs(portable.child(snapshot.root, 'romfs'), [], lambda n: notify(f'Building DLC RomFS · {n:,} files', 2),
+                      skip=portable.is_os_metadata)
     data = fmt.nca([fmt.romfs_section(romfs)], snapshot.title_id, 4, 0)
     phase[:] = [24, 44, 'Hashing DLC content']
     digest = data.digest()
@@ -262,16 +270,13 @@ def build(snapshot, output, output_format=None, verify_output=True, base_game=No
             if (st.st_size, st.st_mtime_ns) != old:
                 raise ValueError('A DLC source file changed during packaging. Retry with the dump idle.')
         fmt.checkpoint()
-        # Commit without replacement or a second payload copy. Windows rename
-        # supports NTFS/exFAT; POSIX uses an exclusive same-filesystem hard link.
-        if os.name == 'nt':
-            temporary.rename(output)  # Windows MoveFile refuses replacement, including on exFAT.
-        else:
-            os.link(temporary, output)
+        # Commit without replacement or a second payload copy, on every OS and
+        # filesystem (including exFAT, which has no hard links).
+        portable.commit_no_replace(temporary, output)
         report = {'output': str(output), 'output_format': kind.upper(), 'title_id': f'{snapshot.title_id:016X}',
                   'base_title_id': f'{snapshot.base_id:016X}', 'dlc_index': snapshot.title_id & 0x7ff,
                   'dlc_version': snapshot.version, 'size': image.size, 'sha256': h.hexdigest(),
-                  'source_file_count': len(sources), 'verified': verify_output, 'base_validated': info is not None,
+                  'source_file_count': len(sources), 'ignored_os_metadata': ignored, 'verified': verify_output, 'base_validated': info is not None,
                   'metadata': 'Generated minimal AddOnContent CNMT; original requirements unavailable.',
                   'seconds': time.perf_counter()-started}
         notify('DLC package ready', 100)

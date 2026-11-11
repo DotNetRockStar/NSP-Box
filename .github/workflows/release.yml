@@ -1,4 +1,4 @@
-name: Build and release Windows app
+name: Build and release
 
 on:
   workflow_dispatch:
@@ -13,15 +13,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows:
-    name: Test, build and publish
-    runs-on: windows-latest
-    timeout-minutes: 25
-    permissions:
-      contents: write
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            target: Windows-x64
+            architecture: x64
+            source: true
+          - os: macos-14
+            target: macOS-arm64
+            architecture: arm64
+            source: false
+          - os: macos-15-intel
+            target: macOS-x64
+            architecture: x64
+            source: false
+          - os: ubuntu-22.04
+            # glibc 2.35 baseline: the binary also runs on newer distributions.
+            target: Linux-x64
+            architecture: x64
+            source: false
     defaults:
       run:
-        shell: pwsh
+        shell: bash
+    env:
+      # Optional Apple Developer ID signing/notarization. Without these secrets
+      # the app is ad-hoc signed and users confirm it once (see README).
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -29,29 +57,96 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11.9'
-          architecture: x64
+          architecture: ${{ matrix.architecture }}
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libxcursor1 binutils
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
       - name: Run synthetic tests
-        run: python -m unittest test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization test_nup_polish
-      - name: Build portable executable
+        run: |
+          TESTS="test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization test_nup_polish test_portable"
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s '-screen 0 1600x1200x24' python -m unittest $TESTS
+          else
+            python -m unittest $TESTS
+          fi
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE_P12 != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "NSPBOX_CODESIGN_IDENTITY=$MACOS_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "NSPBOX_ENTITLEMENTS=$GITHUB_WORKSPACE/packaging/macos/entitlements.plist" >> "$GITHUB_ENV"
+      - name: Build executables
         run: python -m PyInstaller --noconfirm --clean Packager.spec
       - name: Check frozen NSP builds
-        run: python frozen_smoke.py
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a python frozen_smoke.py; else python frozen_smoke.py; fi
       - name: Check frozen NUP tools
-        run: python frozen_nup_smoke.py
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a python frozen_nup_smoke.py; else python frozen_nup_smoke.py; fi
+      - name: Check frozen command line
+        run: python frozen_cli_smoke.py
       - name: Assemble allowlisted release
-        run: python package_release.py
+        run: |
+          if [ "${{ matrix.source }}" = true ]; then python package_release.py; else python package_release.py --skip-source; fi
+      - name: Notarize macOS release
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE_P12 != '' && env.APPLE_APP_PASSWORD != ''
+        run: |
+          archive=$(ls release/NSP-Box-*-macOS-*.zip)
+          xcrun notarytool submit "$archive" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          # Staple the ticket to the app, then rebuild the archive around it.
+          folder="${archive%.zip}"
+          xcrun stapler staple "$folder/NSP-Box.app"
+          rm "$archive"
+          ditto -c -k --sequesterRsrc --keepParent "$folder" "$archive"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            release/*.zip
+            release/*.tar.gz
+            release/RELEASE_NOTES.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: |
+          sha256sum *.zip *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+        working-directory: release
         run: |
-          $version = python -c "import sys; sys.path.insert(0,'src'); import engine; print(engine.VERSION)"
-          if ($LASTEXITCODE -ne 0) { throw 'Could not read app version.' }
-          $tag = 'v' + $version
-          $assets = @(Get-ChildItem -LiteralPath release -Filter '*.zip' -File | ForEach-Object FullName)
-          $assets += (Join-Path (Get-Location) 'release/SHA256SUMS.txt')
-          $releaseTitle = (Get-Content -LiteralPath release/RELEASE_NOTES.md -TotalCount 1) -replace '^#\s+', ''
-          gh release create $tag @assets --target $env:GITHUB_SHA --title $releaseTitle --notes-file release/RELEASE_NOTES.md
-          if ($LASTEXITCODE -ne 0) { throw 'Release could not be created. Existing releases are never overwritten; use a new app version.' }
+          version=$(ls NSP-Box-v*-source.zip | sed -E 's/^NSP-Box-v(.+)-source\.zip$/\1/')
+          [ -n "$version" ] || { echo 'Could not read app version.'; exit 1; }
+          title=$(head -n 1 RELEASE_NOTES.md | sed -E 's/^#\s+//')
+          gh release create "v$version" *.zip *.tar.gz SHA256SUMS.txt --target "$GITHUB_SHA" \
+            --title "$title" --notes-file RELEASE_NOTES.md \
+            || { echo 'Release could not be created. Existing releases are never overwritten; use a new app version.'; exit 1; }

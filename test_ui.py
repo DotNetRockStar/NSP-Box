@@ -91,6 +91,8 @@ class InterfaceTests(unittest.TestCase):
             self.assertGreaterEqual(title[1],0,geometry)
             self.assertLessEqual(title[3],subtitle[1],geometry)
             self.assertLess(subtitle[3],app.browse.winfo_y(),geometry)
+            # A real pointer resting over the window (desktop test runs) hovers the zone.
+            zone.hover(0);self.pump(.02)
             self.assertEqual(app.browse.cget('bg'),'#192b43',geometry)
         self.assertFalse(self.errors)
 
@@ -124,7 +126,10 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(app.dlc_tab_button.kind,'dlc')
         self.assertEqual(app.emulator_patch_btn.kind,'emulator-patch')
         self.assertNotEqual(app.art_btn.kind,app.paste_art_btn.kind)
-        app.motion.enabled=True;self.pump(.2)
+        # Reset the adaptive guard: slow compositors (macOS Retina) may already
+        # have frozen the field; a fresh start must animate again.
+        app.motion.enabled=True;ambient.static=False;ambient.late_frames=0;self.pump(.2)
+        ambient.static=False;ambient.late_frames=0
         before=ambient.frame_count;first=ambient.frame.copy();self.pump(.25)
         self.assertGreater(ambient.frame_count,before)
         self.assertEqual(ambient.frame.size,(app.winfo_width(),app.winfo_height()))
@@ -144,6 +149,19 @@ class InterfaceTests(unittest.TestCase):
         self.assertAlmostEqual(app.dlc_tab_button.selection,1.)
         app.show_tab('game');self.pump(.45)
         self.assertAlmostEqual(app.game_tab_button.selection,1.)
+        self.assertFalse(self.errors)
+
+    def test_ambient_freezes_when_frames_keep_arriving_late(self):
+        app=self.app;ambient=app._ambient
+        app.motion.enabled=True;ambient.static=False;ambient.late_frames=0
+        for _ in range(ambient.LATE_LIMIT):
+            if ambient.job:app.after_cancel(ambient.job)
+            ambient.due=time.perf_counter()-1;ambient.tick()
+        self.assertTrue(ambient.static)
+        frozen=ambient.frame_count;self.pump(.4)
+        self.assertEqual(ambient.frame_count,frozen,'A frozen field must not keep redrawing')
+        app.geometry('1100x820');self.pump(.4)
+        self.assertEqual(ambient.frame.size,(app.winfo_width(),app.winfo_height()),'Resizes still repaint the still field')
         self.assertFalse(self.errors)
 
     def test_motion_retargets_and_icon_cache_stays_bounded(self):

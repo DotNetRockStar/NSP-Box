@@ -4,7 +4,11 @@ import mmap, struct, sys, tempfile, threading, time, unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).parent/'src'))
 import dlc, engine, container_format as fmt, verify_format as reader
-from app import App, cli
+from cli import package_cli as cli
+try:
+    from app import App
+except ImportError:  # Python built without Tk: the GUI test is skipped, CLI tests still run.
+    App=None
 
 BASE=0x0400111122220000
 DLC=BASE+0x1001
@@ -97,6 +101,7 @@ class DlcTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):dlc.build(self.snapshot,self.output,notify=race)
         self.assertEqual(self.output.read_bytes(),b'other writer');self.assertEqual(list(self.root.glob('*.partial')),[])
 
+    @unittest.skipIf(App is None,'Tk is not available')
     def test_tab_scan_build_switch_and_layout(self):
         app=App(show_startup=False,preferences_path=self.root/'prefs.json');errors=[]
         app.report_callback_exception=lambda *a:errors.append(a)

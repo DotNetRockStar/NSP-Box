@@ -7,7 +7,7 @@ DLC compatibility and storage requirements.
 
 [Download](https://github.com/smarkyie/NSP-Box/releases/latest) · [Build from source](BUILD.md) · [Changelog](CHANGELOG.md) · [Disclaimer](DISCLAIMER.md)
 
-A portable Windows app that packages a complete, already-extracted ExeFS/RomFS snapshot into a plaintext NSP for compatible emulators. Choose a folder, add your own artwork, and build an NSP.
+A portable app for **Windows, macOS and Linux** that packages a complete, already-extracted ExeFS/RomFS snapshot into a plaintext NSP for compatible emulators. Choose a folder, add your own artwork, and build an NSP — in the app, or with the `nspbox` [command line](CLI.md).
 
 Version 4.0 adds NUP Tools with Fast/Balanced/Smaller compression, source-aware
 Base / Updates / DLC selection, a smaller latest-game snapshot option, custom title
@@ -20,7 +20,7 @@ reporting the file-size cap in [#8](https://github.com/smarkyie/NSP-Box/issues/8
 
 Use **Game** for complete ExeFS/RomFS snapshots and **DLC** for separate RomFS-only add-ons. A user installed the Bananza DLC NSP and confirmed that the game recognized it in PokeDinner 2.0.0. This is one successful user test, not universal DLC compatibility. See [DLC instructions](DLC.md).
 
-The reversible **Emulator patch** panel now lists its supported Windows x64 targets: Selevet performance build 4 (normal/30 FPS GUI), Eglantine nx2 98/96, AMD Experimental 77-2 (build-99), and PokeDinner 2.1.0a/2.0.0. Standard/PGO and GUI/CLI variants are identified explicitly. Compatible Windows x64 Selevet/Eglantine/PokeDinner builds read the metadata inside an NSP, so a separate `main.npdm` beside the game is unnecessary after applying the patch and restarting. See [patch installation, removal and limits](EMULATOR_PATCH.md). Windows x64 downloads only; no Linux build is included.
+The reversible **Emulator patch** panel now lists its supported Windows x64 targets: Selevet performance build 4 (normal/30 FPS GUI), Eglantine nx2 98/96, AMD Experimental 77-2 (build-99), and PokeDinner 2.1.0a/2.0.0. Standard/PGO and GUI/CLI variants are identified explicitly. Compatible Windows x64 Selevet/Eglantine/PokeDinner builds read the metadata inside an NSP, so a separate `main.npdm` beside the game is unnecessary after applying the patch and restarting. See [patch installation, removal and limits](EMULATOR_PATCH.md). The patch changes Windows x64 emulator files only; it never modifies macOS or Linux emulator builds.
 
 **Piracy is not supported.** Use only files and artwork you have lawfully obtained and are authorized to use. No games, game artwork, firmware or Nintendo keys are provided. Nintendo Switch, Nintendo Switch 2 and related marks belong to Nintendo; game content belongs to its respective rights holders. This is an independent project, not affiliated with, sponsored by or endorsed by Nintendo. See [ownership and use notices](DISCLAIMER.md).
 
@@ -36,8 +36,8 @@ NSP output streams directly to its destination without an intermediate container
 
 ## Quick start
 
-1. Extract the entire ZIP to a writable folder.
-2. Open `NSP-Box.exe`. Python is bundled; installation is not required.
+1. Download the archive for your system and extract it to a writable folder: `Windows-x64` (.zip), `macOS-arm64` for Apple silicon or `macOS-x64` for Intel Macs (.zip), or `Linux-x64` (.tar.gz).
+2. Open `NSP-Box.exe` (Windows), `NSP-Box.app` (macOS) or `NSP-Box` (Linux). Python is bundled; installation is not required. On macOS, if the first launch is blocked, open **System Settings → Privacy & Security** and choose **Open Anyway**.
 3. Click **Browse folder** and select your main game dump folder, or drag the folder into the window. Pasting a folder path and pressing Enter also works.
 4. Select the complete snapshot you want from the dropdown. The app reads its title ID from `main.npdm`.
 5. Edit the displayed game name/version if needed. Add, drop or paste artwork, then click **Crop icon** to position it. Select an NSP destination filename in Output.
@@ -48,6 +48,28 @@ The app never overwrites an existing package and does not modify your source fil
 With **Create package folder** enabled, `D:\Packed\Game.nsp` is saved as `D:\Packed\Game\Game.nsp`, with `main.npdm` and `Game.nsp.report.json` beside it. The companion is an optional workaround for the checked loader's early Switch 2 memory/clock detection. Keep each game/snapshot in a separate folder if using it; a conflicting companion is refused. The exact snapshot metadata is also embedded inside the package in both modes. After applying the emulator patch, the companion is unnecessary for supported containers: the emulator reads the embedded metadata. Keep the original companion as a backup if you plan to remove the patch.
 
 NSP is a PFS0 container with Program, Control and Meta NCAs for games, or Data and Meta NCAs for DLC. It is not compressed. Outputs are unsigned plaintext emulator repacks; this does not make them authenticated retail-console packages. Loading depends on the emulator's plaintext-content support. NSP Box does not create XCI files.
+
+## Command line
+
+Each download includes `nspbox` (`nspbox.exe` on Windows) beside the app. It uses the same engine, needs no desktop session, and never overwrites an existing output. From source, run `python src/cli.py` (Python 3.11+ with Pillow and zstandard).
+
+```sh
+# List the snapshots in a dump (index, title ID, version).
+nspbox scan "/path/to/My Game"
+
+# Build the newest snapshot with artwork; -s N picks another snapshot from scan.
+nspbox build "/path/to/My Game" -o "Packed/My Game.nsp" --artwork cover.png
+
+# Package DLC, and compress or check a NUP archive.
+nspbox dlc "/path/to/My Game DLC" -o "Packed/My Game DLC.nsp"
+nspbox nup pack "/path/to/My Game" --preset Smaller
+nspbox nup verify "/path/to/My Game.nup"
+
+# Machine-readable result for scripts, without progress output.
+nspbox build "/path/to/My Game" -o out.nsp --no-package-folder --json -q
+```
+
+Progress goes to stderr and results to stdout. Exit codes: `0` success, `1` error, `2` invalid arguments, `130` cancelled; Ctrl+C removes the unfinished output. See [CLI.md](CLI.md) for every command and option.
 
 ## Use the emulator patch
 
@@ -120,11 +142,13 @@ The GUI's export button saves another copy without overwriting anything. Setup r
 
 ## Portability and privacy
 
-- Windows 10/11 x64; no administrator rights, Python installation, emulator installation, or network connection required.
-- The one-file EXE unpacks its bundled runtime into the Windows temporary directory at launch and cleans it up on normal exit.
+- Windows 10/11 x64, macOS 11 or later (Apple silicon or Intel), or 64-bit Linux with glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer) and an X11 or XWayland desktop; no administrator rights, Python installation, emulator installation, or network connection required.
+- The one-file Windows and Linux programs unpack their bundled runtime into the temporary directory at launch and clean it up on normal exit. The macOS app is a standard application bundle.
+- Drag and drop works on all three systems. On Linux it uses the bundled TkDND library, which needs the common `libXcursor` desktop library; browsing, pasting paths and the command line work without it.
+- The `nspbox` command-line tool beside the app runs without a desktop session; see [CLI.md](CLI.md).
 - No telemetry, upload or automatic downloading. Emulator setup runs only when explicitly selected; builds do not change emulator configuration.
 - When package-folder output is enabled, paths appear in its local JSON report. Review or remove reports before sharing them if you do not want to disclose local folder names.
-- This release is unsigned. No claim of Nintendo authentication or endorsement is made.
+- Releases are unsigned unless a release note says otherwise (macOS builds are ad-hoc signed). No claim of Nintendo authentication or endorsement is made.
 
 ## Source and redistribution
 
@@ -132,4 +156,4 @@ Full application source, icon assets and synthetic tests are available in the se
 
 You may redistribute the app and source with the required license notices. The software was developed with AI assistance. This package includes no Nintendo code, game data, game cover artwork, console firmware, tickets, certificates, or Nintendo cryptographic keys. Use your own extracted data and artwork; redistribution rights for input/output content are separate from the app's license.
 
-See `TECHNICAL_NOTES.md` for implementation details and `BUILD.md` in the source ZIP to rebuild the EXE. See `GITHUB_RELEASES.md` for publishing future versions.
+See `TECHNICAL_NOTES.md` for implementation details and `BUILD.md` in the source ZIP to rebuild the app on Windows, macOS or Linux. See `GITHUB_RELEASES.md` for publishing future versions.

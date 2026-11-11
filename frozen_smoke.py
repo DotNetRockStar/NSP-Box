@@ -6,6 +6,11 @@ root=Path(__file__).resolve().parent
 sys.path.insert(0,str(root/'src'))
 import engine
 import dlc
+def default_executable():
+    """The GUI binary PyInstaller builds on this platform (see Packager.spec)."""
+    if sys.platform=='win32':return 'dist/NSP-Box.exe'
+    if sys.platform=='darwin':return 'dist/NSP-Box.app/Contents/MacOS/NSP-Box'
+    return 'dist/NSP-Box'
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--executable',type=Path)
 args=parser.parse_args()
@@ -17,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='frozen-',dir=scratch) as tmp:
     (game/'exefs/main.npdm').write_bytes(b);(game/'exefs/main').write_bytes(b'NSO0'+bytes(256))
     (game/'romfs/example.bin').write_bytes(bytes(range(256))*512)
     snapshot=engine.find_snapshots(game)[0][0];inventory=engine.source_inventory(snapshot.root)
-    exe=(args.executable.resolve() if args.executable else root/('dist/NSP-Box.exe' if sys.platform=='win32' else 'dist/NSP-Box'))
+    exe=(args.executable.resolve() if args.executable else root/default_executable())
     for folder_mode in (False,True):
         for kind in ('nsp',):
             for extension,format_name in [('png','PNG'),('webp','WEBP'),('ico','ICO'),('avif','AVIF')]:
@@ -55,3 +60,19 @@ with tempfile.TemporaryDirectory(prefix='frozen-',dir=scratch) as tmp:
 if sys.platform=="win32":
     from test_file_drops import frozen_check
     print(json.dumps(frozen_check(exe)),flush=True)
+else:
+    # The window must open and keep running (catches missing bundled modules
+    # that only fail once Tk/ImageTk start, e.g. PIL._tkinter_finder on Linux).
+    import time
+    with tempfile.TemporaryDirectory(prefix='frozen-gui-',dir=scratch) as home:
+        env=dict(__import__('os').environ,HOME=home,XDG_CONFIG_HOME=home)
+        gui=subprocess.Popen([str(exe)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env)
+        try:
+            deadline=time.monotonic()+8
+            while time.monotonic()<deadline and gui.poll() is None:time.sleep(.2)
+            assert gui.poll() is None,('GUI exited during startup',gui.returncode,gui.stderr.read().decode(errors='replace')[-2000:])
+        finally:
+            gui.terminate()
+            try:gui.wait(10)
+            except subprocess.TimeoutExpired:gui.kill()
+    print(json.dumps({'frozen_smoke':'passed','gui_started':True}),flush=True)

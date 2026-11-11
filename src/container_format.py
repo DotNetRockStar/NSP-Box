@@ -117,7 +117,8 @@ def name_hash(parent, name):
         h = ((h >> 5) | ((h << 27) & 0xffffffff)) ^ c
     return h
 
-def romfs(root, manifest, notify=None):
+def romfs(root, manifest, notify=None, skip=None):
+    """RomFS tables for a folder tree. `skip(path)` may exclude regular files (OS metadata)."""
     dirs = []; files = []
     def visit(path, parent):
         checkpoint()
@@ -131,6 +132,7 @@ def romfs(root, manifest, notify=None):
                 raise ValueError('Linked folders/files are not supported: '+str(p))
             if entry.is_dir(follow_symlinks=False): d['dirs'].append(visit(p,d))
             elif entry.is_file(follow_symlinks=False):
+                if skip is not None and skip(p):continue
                 f = dict(path=p, name=p.name.encode(), parent=d, size=info.st_size)
                 files.append(f); d['files'].append(f)
                 if notify and len(files)%1024==0:notify(len(files))

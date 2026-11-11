@@ -19,10 +19,7 @@ def automatic_output(path,operation):
     if operation==OPERATIONS[4]:return ''
     stem=source.name if operation==OPERATIONS[0] else source.stem
     suffix='.nup' if operation in OPERATIONS[:2] else ('-NSP' if operation==OPERATIONS[3] else '-extracted')
-    candidate=source.parent/(stem+suffix);number=2
-    while candidate.exists():
-        candidate=source.parent/(f'{stem} ({number})'+suffix);number+=1
-    return str(candidate)
+    return str(tools.beside_source(source,stem,suffix))
 
 class NupPanel(AmbientFrame):
     def __init__(self,parent):
@@ -100,8 +97,12 @@ class NupPanel(AmbientFrame):
         self.label(options.inner,'Extraction always checks hashes. Inspect / Verify uses this option for full verification.',wraplength=275,justify='left').pack(anchor='w',pady=(6,14))
         self.label(options.inner,'Output · automatic',color=TEXT,size=10).pack(anchor='w',pady=(2,6))
         self.output_label=self.label(options.inner,variable=self.destination,wraplength=275,justify='left',size=9);self.output_label.pack(anchor='w',pady=(0,14))
-        self.label(options.inner,'NUP compatibility',color='#b9d8ff',size=10).pack(anchor='w',pady=(2,6))
-        self.label(options.inner,'Plaintext inputs only. Requires a NUP-capable emulator.\n\nDLC mounting depends on the emulator; convert DLC to NSP to install it where needed.',wraplength=275,justify='left').pack(anchor='w')
+        self.compat_head=self.label(options.inner,'NUP compatibility',color='#b9d8ff',size=10);self.compat_head.pack(anchor='w',pady=(2,6))
+        self.compat_tip=self.label(options.inner,'Plaintext inputs only. Requires a NUP-capable emulator.\n\nDLC mounting depends on the emulator; convert DLC to NSP to install it where needed.',wraplength=275,justify='left');self.compat_tip.pack(anchor='w')
+        # Larger platform fonts (macOS) can exceed the minimum window height; the
+        # same guidance is in Notes, so drop this tip rather than clip it.
+        self.options_inner=options.inner;self._fit_job=None
+        options.inner.bind('<Configure>',lambda event:self.schedule_fit(),add='+')
         self.panels=[source,packages,options]
         self.progress=Progress(self,self.motion);self.progress.pack(fill='x')
         footer=AmbientFrame(self);footer.pack(fill='x',padx=24,pady=(12,18))
@@ -111,6 +112,25 @@ class NupPanel(AmbientFrame):
         self.open_button=Button(footer,'Open output',self.open_output,self.motion,width=148,height=47,kind='open-output',state='disabled');self.open_button.pack(side='right',padx=(10,0))
         self.changed()
 
+    def schedule_fit(self):
+        if self._fit_job is None:self._fit_job=self.after_idle(self.fit_options)
+    def fit_options(self):
+        self._fit_job=None
+        inner=self.options_inner;optional=(self.compat_head,self.compat_tip)
+        if not inner.winfo_exists():return
+        def pady(widget,default):
+            try:value=widget.pack_info().get('pady',default)
+            except tk.TclError:value=default
+            parts=[int(v) for v in (value if isinstance(value,(tuple,list)) else str(value).split())] or [0]
+            return parts[0]+parts[-1] if len(parts)>1 else 2*parts[0]
+        fixed=sum(w.winfo_reqheight()+pady(w,0) for w in inner.pack_slaves() if w not in optional)
+        extra=self.compat_head.winfo_reqheight()+8+self.compat_tip.winfo_reqheight()
+        fits=inner.winfo_height()>=fixed+extra
+        shown=self.compat_tip.winfo_manager()=='pack'
+        if fits and not shown:
+            self.compat_head.pack(anchor='w',pady=(2,6));self.compat_tip.pack(anchor='w')
+        elif not fits and shown:
+            self.compat_head.pack_forget();self.compat_tip.pack_forget()
     def report_text(self,text):
         self.report.configure(state='normal');self.report.delete('1.0','end');self.report.insert('1.0',text);self.report.configure(state='disabled')
     def source_key(self):return (self.operation.get(),self.input.get().strip())
@@ -300,8 +320,8 @@ class NupPanel(AmbientFrame):
         if not self.last_output:return
         path=self.last_output if self.last_output.is_dir() else self.last_output.parent
         try:
-            if sys.platform=='win32':os.startfile(str(path))
-            else:subprocess.Popen(['xdg-open',str(path)])
+            import portable
+            portable.open_folder(path)
         except OSError as e:self.status.set(str(e))
     def close(self):
         if self._art_editor is not None and self._art_editor.winfo_exists():self._art_editor.close()

@@ -20,9 +20,8 @@ CAUTION = (
 )
 
 def default_preferences_path():
-    if sys.platform.startswith('linux'):
-        return Path(os.environ.get('XDG_CONFIG_HOME') or Path.home()/'.config')/'NSPBox'/'preferences.json'
-    return Path(os.environ.get('LOCALAPPDATA') or Path.home())/'NSPBox'/'preferences.json'
+    import portable
+    return portable.config_dir()/'preferences.json'
 
 def read_preferences(path):
     try:

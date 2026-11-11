@@ -3,7 +3,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import base64, hashlib, io, json, mmap, os, re, shutil, struct, tempfile, uuid, stat
-import engine, container_format as fmt, verify_format as vf
+import engine, portable, container_format as fmt, verify_format as vf
 from nup_format import (Package, Source, Archive, PRESETS, KINDS, check, require,
                         linked, path_parts, safe_name, pack, extract, package_path, commit_file)
 
@@ -15,9 +15,29 @@ def npdm_id(data):
     require(off>=0x80 and size>=0x20 and off+size<=len(data) and data[off:off+4]==b'ACI0','Invalid NPDM application metadata.')
     return struct.unpack_from('<Q',data,off+0x10)[0]
 
+def beside_source(source,stem,suffix):
+    """Default output beside the input, numbered so a previous result is never overwritten."""
+    parent=Path(source).absolute().parent;candidate=parent/(stem+suffix);number=2
+    while candidate.exists():
+        candidate=parent/(f'{stem} ({number})'+suffix);number+=1
+    return candidate
+
+CANONICAL_TOP=('exefs','romfs','control')
+
 def tree_sources(root,cancel=None,directory_stamps=None,notify=lambda *a:None):
+    """Index a package folder. Top-level ExeFS/RomFS/Control spellings are stored in the
+    standard lower case, and macOS .DS_Store/AppleDouble metadata is never archived."""
     root=Path(root);require(root.is_dir() and not linked(root),'Choose an unlinked source folder.')
     files={};directories=set()
+    def relative(p,depth,is_dir):
+        name=p.relative_to(root).as_posix()
+        if depth==0 and is_dir and name.casefold() in CANONICAL_TOP:
+            canonical=name.casefold();require(canonical not in directories,'Several folders differ only by letter case: '+name)
+            return canonical
+        if depth>0:
+            top,rest=name.split('/',1)
+            if top.casefold() in CANONICAL_TOP:name=top.casefold()+'/'+rest
+        return name
     def visit(folder,depth):
         check(cancel);require(depth<256,'Source tree is too deep.')
         if directory_stamps is not None:
@@ -28,9 +48,10 @@ def tree_sources(root,cancel=None,directory_stamps=None,notify=lambda *a:None):
             if entry.name=='.listing':continue
             st=entry.stat(follow_symlinks=False);p=Path(entry.path)
             require(not stat.S_ISLNK(st.st_mode) and not getattr(st,'st_file_attributes',0)&0x400,'Linked files/folders are not supported: '+p.name)
-            name=p.relative_to(root).as_posix()
-            if entry.is_dir(follow_symlinks=False):directories.add(name);visit(p,depth+1)
+            is_dir=entry.is_dir(follow_symlinks=False);name=relative(p,depth,is_dir)
+            if is_dir:directories.add(name);visit(p,depth+1)
             elif entry.is_file(follow_symlinks=False):
+                if portable.is_os_metadata(p):continue
                 files[name]=Source.path(p,st)
                 if len(files)%1024==0:notify(f'Indexing source files · {len(files):,}',1)
             else:raise ValueError('Special files are not supported: '+p.name)
@@ -86,7 +107,7 @@ def discover(folder,cancel=None,directory_stamps=None,notify=lambda *a:None):
     def content(path):
         if directory_stamps is not None and path.is_dir():
             s=path.stat();directory_stamps[path]=(s.st_mtime_ns,s.st_ino)
-        return (path/'exefs').is_dir() or (path/'romfs').is_dir()
+        return portable.child(path,'exefs').is_dir() or portable.child(path,'romfs').is_dir()
     def add(root,kind,version=0,tid=None):
         files,dirs=tree_sources(root,cancel,directory_stamps,notify)
         require(files,'Empty content package: '+root.name)
@@ -122,7 +143,7 @@ def discover(folder,cancel=None,directory_stamps=None,notify=lambda *a:None):
                     for root in sorted(title.iterdir()):
                         if root.is_dir() and content(root):add(root,2,int(root.name) if root.name.isdecimal() else 0,tid)
     elif content(folder):
-        is_dlc=not (folder/'exefs/main.npdm').is_file()
+        is_dlc=not (portable.child(folder,'exefs')/'main.npdm').is_file()
         version=int(folder.name) if folder.name.isascii() and folder.name.isdecimal() and len(folder.name)<=10 else 0
         is_update=folder.parent.name.lower()=='updates'
         add(folder,2 if is_dlc else (1 if is_update else 0),version)
@@ -456,7 +477,7 @@ def nup_to_nsp(path,output,selection=None,verify=True,notify=lambda *a:None,canc
             for i,p in enumerate(packages):
                 check(cancel);name=f'{"DLC" if p.kind==2 else "Game"} [{p.title_id:016X}] v{p.version}.nsp'
                 result=build_snapshot_nsp(p,stage/name,verify,lambda s,v:notify(s,10+89*(i+v/100)/len(packages)),cancel);results.append(result)
-            archive.unchanged();check(cancel);stage.rename(output);notify('NSP conversion complete',100)
+            archive.unchanged();check(cancel);portable.commit_no_replace(stage,output);notify('NSP conversion complete',100)
             return {'output':str(output),'size':sum(r['size'] for r in results),'verified':verify,'packages':len(results)}
         finally:
             if stage.exists():

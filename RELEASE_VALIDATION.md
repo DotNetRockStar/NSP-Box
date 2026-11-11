@@ -111,7 +111,10 @@ an external exact `main.npdm` can still be needed for the checked loader's early
 Switch 2 memory/clock selection. 12 GiB alone may boot with incorrect timing and
 reduced performance. Integrity checks do not guarantee booting, gameplay or FPS.
 
-Windows x64 is the only shipped binary target. A clean Windows installation
-without Python and every graphics driver/emulator configuration have not been
-tested. This is experimental software with limited real-world testing; please
+Shipped binary targets are Windows x64, macOS arm64/x64 and Linux x64. The
+macOS and Linux builds were validated locally (macOS 26 arm64; Linux arm64 in a
+container under Xvfb) with the full synthetic suite, frozen NSP/DLC/NUP/CLI smoke
+tests and GUI start-up; the x64 macOS/Linux and Windows binaries are validated by
+the release workflow on their runners. A clean installation without Python and
+every graphics driver/emulator configuration have not been tested. This is experimental software with limited real-world testing; please
 [report reproducible problems](https://github.com/smarkyie/NSP-Box/issues/new).

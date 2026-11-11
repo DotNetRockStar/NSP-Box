@@ -6,10 +6,13 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageOps, ImageTk, ImageGrab
 import engine
 import compatibility
+import portable
+import cli as cli_module
+from cli import package_cli as cli  # Compatibility: tests and scripts import app.cli.
 from startup_notice import StartupNotice, default_preferences_path, should_show
 from artwork import ArtworkSelection, ARTWORK_FILETYPES, IMAGE_EXTENSIONS
 from crop_dialog import CropDialog
-from ui import Layout, BG, PANEL, FIELD, TEXT, MUTED, ACCENT, BORDER
+from ui import Layout, BG, PANEL, FIELD, TEXT, MUTED, ACCENT, BORDER, ui_font
 
 class App(Layout,tk.Tk):
     def __init__(self,show_startup=True,preferences_path=None):
@@ -33,6 +36,9 @@ class App(Layout,tk.Tk):
         self.protocol('WM_DELETE_WINDOW',self.close);self._poll_job=self.after(100,self.poll)
         self.bind_all('<Control-v>',self.paste_art_shortcut,add='+')
         self.bind_all('<Control-V>',self.paste_art_shortcut,add='+')
+        if sys.platform=='darwin':
+            self.bind_all('<Command-v>',self.paste_art_shortcut,add='+')
+            self.bind_all('<Command-V>',self.paste_art_shortcut,add='+')
         # Startup guidance lives in the Game tab and Notes, without a modal.
 
     def show_startup_caution(self):
@@ -141,6 +147,10 @@ class App(Layout,tk.Tk):
             if text and '\n' not in text:
                 path=Path(text)
                 if path.suffix.lower() in IMAGE_EXTENSIONS and path.is_file():self.set_art(path);return True
+        except NotImplementedError:
+            # Linux needs wl-paste (Wayland) or xclip (X11) for clipboard images.
+            if not quiet:messagebox.showinfo('Paste artwork','Clipboard images need wl-paste or xclip on Linux. Add or drop the image file instead.',parent=self)
+            return False
         except (OSError,ValueError,tk.TclError) as e:
             if not quiet:messagebox.showerror('Cannot paste artwork',str(e),parent=self)
             return False
@@ -217,10 +227,7 @@ class App(Layout,tk.Tk):
     def open_output(self):
         if not self.last_output:return
         try:
-            folder=str(self.last_output.parent)
-            if sys.platform=='win32':os.startfile(folder)
-            else:subprocess.Popen(['open' if sys.platform=='darwin' else 'xdg-open',folder],
-                                  stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            portable.open_folder(self.last_output.parent)
         except OSError as error:messagebox.showerror('Could not open folder',str(error),parent=self)
 
     def notes(self):
@@ -238,7 +245,7 @@ class App(Layout,tk.Tk):
         ttk.Button(buttons,text='Export plaintext compatibility file…',command=lambda:self.export_keys(w)).pack(anchor='w',pady=(0,8))
         ttk.Button(buttons,text='Set up emulator keys folder…',command=lambda:self.setup_compatibility(w)).pack(anchor='w')
         from tkinter.scrolledtext import ScrolledText
-        body=ScrolledText(w,bg=BG,fg=TEXT,relief='flat',bd=0,wrap='word',font=('Segoe UI',10),padx=4,pady=4)
+        body=ScrolledText(w,bg=BG,fg=TEXT,relief='flat',bd=0,wrap='word',font=ui_font(10),padx=4,pady=4)
         body.pack(fill='both',expand=True,padx=20);body.insert('1.0',text);body.configure(state='disabled')
 
     def emulator_patch(self):
@@ -249,7 +256,7 @@ class App(Layout,tk.Tk):
 
     def setup_compatibility(self,parent):
         folder=filedialog.askdirectory(parent=parent,title='Choose the emulator keys folder',
-            initialdir=str(Path(os.environ.get('APPDATA',Path.home()))/'eden'/'keys'))
+            initialdir=str(portable.emulator_keys_dir()))
         if not folder:return
         try:
             result=compatibility.install(folder)
@@ -289,58 +296,15 @@ class App(Layout,tk.Tk):
         self.destroy()
         if self._clipboard_temp:self._clipboard_temp.cleanup()
 
-def cli(argv):
-    parser=argparse.ArgumentParser(description='Package a complete extracted ExeFS/RomFS snapshot into NSP.')
-    parser.add_argument('--package',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--artwork',type=Path);parser.add_argument('--title');parser.add_argument('--snapshot',type=int,default=0)
-    parser.add_argument('--display-version');parser.add_argument('--skip-verification',action='store_true')
-    parser.add_argument('--format',choices=('nsp',),help=argparse.SUPPRESS)
-    parser.add_argument('--package-folder',action=argparse.BooleanOptionalAction,default=True,help='Create a folder including metadata and a JSON report (default). Use --no-package-folder for only the NSP.')
-    parser.add_argument('--dlc',action='store_true',help='Package extracted DLC RomFS instead of a complete game; always single-file output.')
-    parser.add_argument('--dlc-title-id',help='Original DLC title ID when it is absent from folder names.')
-    parser.add_argument('--dlc-version',help='Numeric DLC version; otherwise detected from the version folder.')
-    parser.add_argument('--base-game',type=Path,help='Optional base-game plaintext NSP for DLC mapping validation.')
-    art_options=parser.add_mutually_exclusive_group()
-    art_options.add_argument('--artwork-fit',action='store_true')
-    art_options.add_argument('--artwork-crop',nargs=4,type=float,metavar=('LEFT','TOP','RIGHT','BOTTOM'))
-    args=parser.parse_args(argv)
-    if args.dlc:
-        import dlc
-        if args.artwork or args.artwork_fit or args.artwork_crop:
-            raise ValueError('DLC is data-only and does not use game cover artwork.')
-        snapshots=dlc.find_snapshots(args.package,args.dlc_title_id)
-        if not 0<=args.snapshot<len(snapshots):raise ValueError('DLC snapshot index is out of range.')
-        s=snapshots[args.snapshot]
-        if args.dlc_version is not None:s=dlc.DlcSnapshot(s.root,s.title_id,dlc.parse_version(args.dlc_version),s.label)
-        return dlc.build(s,args.output,args.format,not args.skip_verification,args.base_game)
-    if args.dlc_title_id or args.dlc_version is not None or args.base_game:
-        raise ValueError('DLC options require --dlc.')
-    snapshots,_=engine.find_snapshots(args.package)
-    if not 0<=args.snapshot<len(snapshots):raise ValueError('Snapshot index is out of range.')
-    s=snapshots[args.snapshot]
-    if (args.artwork_fit or args.artwork_crop) and not args.artwork:raise ValueError('Choose --artwork before specifying its crop mode.')
-    artwork=ArtworkSelection(args.artwork,tuple(args.artwork_crop) if args.artwork_crop else None,args.artwork_fit) if args.artwork else None
-    result=engine.build(s,args.output,args.title or s.title,args.display_version or ('dump-'+str(s.version) if s.version else 'Snapshot'),artwork,not args.skip_verification,output_format=args.format,package_folder=args.package_folder)
-    return result
-
 def main():
-    if '--nup-operation' in sys.argv:
-        import nup_cli
-        return nup_cli.main(sys.argv[1:])
-    if '--package' in sys.argv:
-        try:result=cli(sys.argv[1:]);print(json.dumps(result,indent=2));return 0
-        except Exception as e:
-            if sys.stderr:print(str(e),file=sys.stderr)
-            # Windowed EXEs have no console; retain a diagnostic next to the requested output.
-            try:
-                args=sys.argv
-                if '--package-folder' in args:
-                    dest=Path(args[args.index('--output')+1]);dest.with_suffix('.error.txt').write_text(traceback.format_exc(),encoding='utf-8')
-            except Exception:pass
-            return 1
-    try:ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:pass
+    if cli_module.wants_cli(sys.argv[1:]):return cli_module.run(sys.argv[1:])
+    if sys.platform=='win32':
+        try:ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:pass
     app=App()
+    if sys.platform=='darwin':
+        # Items dropped on the Dock icon or opened with "Open With" in Finder.
+        app.createcommand('::tk::mac::OpenDocument',lambda *paths:app.receive_drop([str(p) for p in paths]))
     if '--folder' in sys.argv:
         app.folder.set(sys.argv[sys.argv.index('--folder')+1]);app.after(150,app.scan)
     if '--artwork' in sys.argv:app.after(200,lambda:app.set_art(Path(sys.argv[sys.argv.index('--artwork')+1])))

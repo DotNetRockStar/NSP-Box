@@ -187,7 +187,7 @@ python frozen_smoke.py
 python frozen_nup_smoke.py
 ```
 
-CLI: `NSP-Box.exe --nup-operation pack --input DUMP --output GAME.nup`.
+CLI: `nspbox nup pack DUMP -o GAME.nup` (see [CLI.md](CLI.md)); the original form `NSP-Box.exe --nup-operation pack --input DUMP --output GAME.nup` still works.
 Operations: `pack`, `nsp-to-nup`, `extract`, `nup-to-nsp`, `inspect`, `verify`.
 `--preset Fast|Balanced|Smaller`; `--no-large-files-raw` compresses larger files;
 `--no-latest-snapshot` preserves every base/update version during folder packing;

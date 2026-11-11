@@ -1,5 +1,6 @@
 """Quiet, bounded-cost ambient light behind the native Tk interface."""
 import math
+import sys
 import time
 import weakref
 import tkinter as tk
@@ -32,7 +33,25 @@ class AmbientBackground:
         self.mask = radial.point([round((x/255)**2 * 115) for x in range(256)])
         self.mask = self.mask.resize((200, 158), Image.Resampling.BILINEAR)
         self.colors = ('#204a79', '#303463')
+        # Adaptive cost guard: some platforms (notably macOS Retina with Tk's
+        # software compositing) need >100 ms to redraw one ambient frame, which
+        # saturates the event loop. Frames that keep arriving late switch the
+        # field to a still image; the look is kept, only the drift stops.
+        # Tk on macOS composites every canvas redraw in software; measured at
+        # ~100 ms per ambient frame on Retina displays, which halves UI
+        # responsiveness. Start still there; elsewhere the guard below decides.
+        self.static = sys.platform == 'darwin'
+        self.frozen_t = 0.0
+        self.late_frames = 0
+        self.due = None
         self.job = root.after(20, self.tick)
+
+    LATE_SECONDS = .025
+    LATE_LIMIT = 4
+
+    def _schedule(self, delay_ms):
+        self.due = time.perf_counter() + delay_ms/1000
+        self.job = self.root.after(delay_ms, self.tick)
 
     def register(self, widget):
         self.targets.add(widget)
@@ -67,9 +86,20 @@ class AmbientBackground:
         visible = self.root.state() not in ('iconic', 'withdrawn')
         width, height = self.root.winfo_width(), self.root.winfo_height()
         needs_size = self.frame is None or self.frame.size != (width, height)
-        moving = self.motion.enabled and visible
+        moving = self.motion.enabled and visible and not self.static
+        slow = (getattr(self.root, 'busy', False) or getattr(self.root, 'scanning', False)
+                or getattr(getattr(self.root, 'dlc_panel', None), 'busy', False)
+                or getattr(getattr(self.root, 'nup_panel', None), 'busy', False))
+        # Only judge lateness while idle: during packing the worker threads,
+        # not drawing, delay the timer, and that must not freeze the field.
+        if moving and not slow and self.due is not None:
+            late = time.perf_counter() - self.due
+            self.late_frames = self.late_frames + 1 if late > self.LATE_SECONDS else 0
+            if self.late_frames >= self.LATE_LIMIT:
+                self.static = True;moving = False
         if visible and (moving or needs_size):
-            t = (time.perf_counter()-self.started) / 24 if self.motion.enabled else 0
+            if moving:self.frozen_t = (time.perf_counter()-self.started) / 24
+            t = self.frozen_t if self.motion.enabled else 0
             field = Image.new('RGB', (160, 120), BASE)
             positions = ((-78+22*math.sin(t), -80+15*math.cos(t*.7)),
                          (45+22*math.cos(t*.8), 20+18*math.sin(t*.6)))
@@ -91,9 +121,7 @@ class AmbientBackground:
                         self.paint(widget)
                 except tk.TclError:
                     self.targets.discard(widget)
-        slow = (getattr(self.root, 'busy', False) or getattr(self.root, 'scanning', False)
-                or getattr(getattr(self.root, 'dlc_panel', None), 'busy', False))
-        self.job = self.root.after(250 if slow or not visible or not self.motion.enabled else 83, self.tick)
+        self._schedule(250 if slow or not visible or not moving else 83)
 
     def stop(self):
         self.closed = True

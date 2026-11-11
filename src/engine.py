@@ -4,6 +4,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 import hashlib, io, json, mmap, os, re, shutil, stat, struct, tempfile, time, uuid
 import container_format as fmt
+import portable
 import verify_format as verifier
 from artwork import artwork_bytes, ArtworkSelection
 from compatibility import placeholder_text
@@ -42,9 +43,10 @@ def find_snapshots(folder):
     def scan(path,depth):
         if depth>4: return
         fmt.checkpoint()
-        if (path/'exefs'/'main').is_file() and (path/'exefs'/'main.npdm').is_file() and (path/'romfs').is_dir():
+        exefs=portable.child(path,'exefs')
+        if (exefs/'main').is_file() and (exefs/'main.npdm').is_file() and portable.child(path,'romfs').is_dir():
             try:
-                tid=read_title_id(path/'exefs'/'main.npdm')
+                tid=read_title_id(exefs/'main.npdm')
                 if tid & 0x800: raise ValueError('NPDM identifies a patch, not a main application.')
                 rel=path.relative_to(folder)
                 nums=[int(p) for p in rel.parts if p.isdecimal()]
@@ -53,7 +55,7 @@ def find_snapshots(folder):
                 label=str(rel) if rel.parts else 'Selected folder'
                 title=clean_title(folder.name)
                 nacp=None
-                for parent in dict.fromkeys([path,path/'control',folder,folder/'control']):
+                for parent in dict.fromkeys([path,portable.child(path,'control'),folder,portable.child(folder,'control')]):
                     p=parent/'control.nacp'
                     if p.is_file() and p.stat().st_size==0x4000:
                         nacp=p
@@ -103,7 +105,9 @@ def control_data(snapshot,title,version,artwork):
             'TraditionalChinese','SimplifiedChinese','BrazilianPortuguese','Polish','Thai')]
     return entries,existing is not None
 
-def source_inventory(root,notify=None):
+def source_inventory(root,notify=None,ignored=None):
+    """Source files by path -> (size, mtime). OS metadata (.DS_Store, ._*) is skipped
+    and, when `ignored` is a list, recorded there relative to `root`."""
     inventory={}
     def scan(folder):
         with os.scandir(folder) as entries:
@@ -113,10 +117,14 @@ def source_inventory(root,notify=None):
                     raise ValueError(f'Linked files/folders are not supported: {path}')
                 if entry.is_dir(follow_symlinks=False):scan(path)
                 elif entry.is_file(follow_symlinks=False):
+                    if portable.is_os_metadata(path):
+                        if ignored is not None:ignored.append(path.relative_to(root).as_posix())
+                        continue
                     inventory[path]=(st.st_size,st.st_mtime_ns)
                     if notify and len(inventory)%256==0:notify(f'Checking source files · {len(inventory):,} found',1)
-    for sub in ('exefs','romfs'):scan(root/sub)
-    if not any(p.parent==root/'romfs' or root/'romfs' in p.parents for p in inventory):
+    exefs,romfs=portable.child(root,'exefs'),portable.child(root,'romfs')
+    for sub in (exefs,romfs):scan(sub)
+    if not any(romfs in p.parents for p in inventory):
         raise ValueError('The RomFS folder is empty.')
     return inventory
 
@@ -142,7 +150,8 @@ def _verify_region(buf,snapshot,inventory,notify,source_hashes=None):
     romfs=verifier.romfs_files(next(b for kind,b in program[2] if kind=='romfs'))
     checked=[];total=sum(v[0] for v in inventory.values());done=0
     for folder,packed in [('exefs',exefs),('romfs',romfs)]:
-        originals={p.relative_to(snapshot.root/folder).as_posix():p for p in inventory if snapshot.root/folder in p.parents}
+        base=portable.child(snapshot.root,folder)
+        originals={p.relative_to(base).as_posix():p for p in inventory if base in p.parents}
         assert set(originals)==set(packed),'Packed file list differs from source'
         for name,p in originals.items():
             fmt.checkpoint()
@@ -181,12 +190,13 @@ def build(snapshot,output,title,display_version,artwork_path=None,verify=True,no
     if kind!='nsp':raise ValueError('NSP Box supports NSP output only.')
     if output.suffix.lower()!='.'+kind:raise ValueError(f'Output filename must end in .{kind} for {kind.upper()} output.')
     distribution=0
-    if any(output.is_relative_to(root/p) for p in ('exefs','romfs')):
+    exefs,romfs=portable.child(root,'exefs'),portable.child(root,'romfs')
+    if any(output.is_relative_to(p) for p in (exefs,romfs)):
         raise ValueError('Save the NSP outside the source exefs and romfs folders.')
     if output.exists():raise FileExistsError('An output with that name already exists. Choose another filename.')
-    if read_title_id(root/'exefs/main.npdm')!=snapshot.title_id:raise ValueError('Source title ID changed. Scan the folder again.')
+    if read_title_id(exefs/'main.npdm')!=snapshot.title_id:raise ValueError('Source title ID changed. Scan the folder again.')
     companion=output.parent/'main.npdm' if package_folder and snapshot.title_id>>56==4 else None
-    companion_data=(root/'exefs/main.npdm').read_bytes() if companion else None
+    companion_data=(exefs/'main.npdm').read_bytes() if companion else None
     if companion and companion.exists() and companion.read_bytes()!=companion_data:
         raise ValueError('A different main.npdm already exists in the output folder. Choose a separate folder for this game/snapshot; existing metadata will not be overwritten.')
     phase=[0,0,'Preparing']
@@ -194,17 +204,17 @@ def build(snapshot,output,title,display_version,artwork_path=None,verify=True,no
         notify(phase[2],phase[0]+(phase[1]-phase[0])*done/max(total,1))
     fmt.configure(cancel,on_progress)
     notify('Checking source files',1)
-    inventory=source_inventory(root,notify)
+    ignored=[];inventory=source_inventory(root,notify,ignored)
     timings['source_scan']=time.perf_counter()-tick;tick=time.perf_counter()
     output.parent.mkdir(parents=True,exist_ok=True)
     estimate=int(sum(v[0] for v in inventory.values())*1.02)+32*1024*1024
     if shutil.disk_usage(output.parent).free<estimate:raise ValueError('Not enough free disk space for this NSP.')
     art=artwork_bytes(artwork_path)
     notify('Building RomFS file tables',2)
-    source_manifest=[];rblob=fmt.romfs(root/'romfs',source_manifest,
-        lambda count:notify(f'Building RomFS file tables · {count:,} files',2))
-    exblob=fmt.filesystem([(p.name,p) for p in sorted((root/'exefs').iterdir()) if p.is_file()])
-    if any(p.is_dir() for p in (root/'exefs').iterdir()):raise ValueError('ExeFS must contain files directly, not nested directories.')
+    source_manifest=[];rblob=fmt.romfs(romfs,source_manifest,
+        lambda count:notify(f'Building RomFS file tables · {count:,} files',2),skip=portable.is_os_metadata)
+    exblob=fmt.filesystem([(p.name,p) for p in sorted(exefs.iterdir()) if p.is_file() and not portable.is_os_metadata(p)])
+    if any(p.is_dir() for p in exefs.iterdir()):raise ValueError('ExeFS must contain files directly, not nested directories.')
     phase[:]=[2,22,'Building RomFS integrity tree'];notify(phase[2],2)
     program=fmt.nca([fmt.pfs_section(exblob),fmt.romfs_section(rblob)],snapshot.title_id,0,distribution)
     timings['filesystems_and_integrity_tree']=time.perf_counter()-tick;tick=time.perf_counter()
@@ -252,18 +262,18 @@ def build(snapshot,output,title,display_version,artwork_path=None,verify=True,no
                     with companion_temp.open('xb') as f:
                         f.write(companion_data);f.flush();os.fsync(f.fileno())
                     try:
-                        companion_temp.rename(companion);companion_created=True
+                        portable.commit_no_replace(companion_temp,companion);companion_created=True
                     except FileExistsError:
                         if companion.read_bytes()!=companion_data:
                             raise ValueError('Output main.npdm changed during packaging. Choose a separate output folder.')
                 finally:
                     if companion_temp.exists():companion_temp.unlink()
-            # Windows rename refuses existing destinations, including files created during the build.
-            temp_path.rename(output);committed=True
+            # Refuses existing destinations on every OS, including files created during the build.
+            portable.commit_no_replace(temp_path,output);committed=True
             report={'app':'NSP Box','version':VERSION,'title':title,'title_id':f'{snapshot.title_id:016X}',
                     'snapshot':str(root),'snapshot_version':snapshot.version,'display_version':display_version,
                     'size':result.size,'sha256':h.hexdigest(),'original_control_preserved':preserved,
-                    'source_file_count':len(inventory),'verified':verify,'files':checked,
+                    'source_file_count':len(inventory),'ignored_os_metadata':ignored,'verified':verify,'files':checked,
                     'timings_seconds':{**timings,'total':time.perf_counter()-started},
                     'verification_method':'Source SHA-256 captured during writing; full independent output readback.' if verify else 'Skipped',
                     'output_format':kind.upper(),'output':str(output),'package_folder':bool(package_folder),

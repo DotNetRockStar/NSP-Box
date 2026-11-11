@@ -1,5 +1,28 @@
 # Release notes
 
+## Unreleased — macOS, Linux and the command line
+
+NSP Box now runs on **macOS** (Apple silicon and Intel) and **Linux** as well as Windows, and gains a full command-line tool. Rename this heading to the next version number before tagging a release.
+
+### New
+
+- **macOS and Linux apps.** Releases include `NSP-Box.app` for macOS 11+ (arm64 and x64) and a portable `NSP-Box` for 64-bit Linux, alongside the Windows app. Drag and drop works on all three systems, including folders dropped on the macOS Dock icon. **Cmd+V** pastes artwork on macOS.
+- **`nspbox` command line** for every system: `scan`, `build`, `dlc`, and `nup pack | from-nsp | extract | to-nsp | inspect | verify`, with progress on stderr, `--json` results, meaningful exit codes and clean **Ctrl+C** cancellation. It needs no desktop session. The original `--package` and `--nup-operation` forms still work. See [CLI.md](CLI.md).
+
+### Fixes
+
+- **exFAT, FAT32 and network drives on macOS/Linux:** NUP, NUP-extraction and DLC outputs failed to save there ("Operation not supported"), because the final step used hard links. Every output now uses an exclusive commit that works on any filesystem.
+- **Never overwrite, on every system:** on macOS/Linux a game NSP or `main.npdm` companion created by another program during a build could be silently replaced. Commits now refuse existing files everywhere, as they always did on Windows.
+- **`ExeFS`/`RomFS` folder names** are recognized regardless of letter case on Linux, matching Windows and macOS.
+- **macOS Finder metadata** (`.DS_Store`, AppleDouble `._*` files) is no longer packaged into game, DLC or NUP outputs. Files are identified by signature, so game files that share a name are kept; skipped files are listed in the report.
+- **Extraction on macOS** checks case-colliding names before writing, as on Windows, instead of failing midway.
+- Open output folder works on macOS from the DLC and NUP tabs; clipboard image paste on Linux explains that `wl-paste`/`xclip` is needed instead of failing silently; command-line output no longer fails on non-ASCII titles when redirected on Windows.
+
+### Interface
+
+- Native system font on macOS, sized to match the Windows layout. The animated background starts still on macOS, where Tk redraws are expensive, and pauses automatically on any system where frames fall behind. The operating system's reduce-motion setting is honored on macOS and GNOME-based Linux desktops as well as Windows.
+- The Emulator patch dialog explains on macOS/Linux that it changes Windows x64 emulator files only.
+
 ## 4.0.0 — Meet NUP
 
 Smaller archives, flexible packaging, and more control over your game collection. Version 4.0 introduces **NUP Tools**, alongside the existing NSP builder.

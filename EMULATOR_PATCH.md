@@ -74,7 +74,9 @@ This does not guarantee every future release or fork. A compiler/loader rewrite,
 different architecture, signed executable or unmatched code can require a patcher
 update. No match means no executable edits. The patch cannot add Switch 2
 emulation to an emulator that does not implement it. Linux ELF/AppImage and
-macOS/Android binaries are not supported by this Windows x64 patch.
+macOS/Android binaries are not supported by this Windows x64 patch. NSP Box itself runs on macOS and Linux; there the dialog
+can still patch a Windows x64 emulator folder (for example one used under Wine), and
+never modifies macOS or Linux emulator builds.
 
 ## What changes
 

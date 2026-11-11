@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from contextlib import contextmanager
 import base64, hashlib, io, json, os, re, shutil, stat, struct, tempfile, unicodedata, uuid
 import zstandard as zstd
+import portable
 
 BLOCK=1024*1024
 LARGE_FILE=256*1024*1024
@@ -46,9 +47,9 @@ def path_parts(path):
     return parts
 
 def commit_file(temporary,output):
+    """Exclusive final commit on every OS/filesystem; never replaces an existing output."""
     check(None)
-    if os.name=='nt':temporary.rename(output)
-    else:os.link(temporary,output);temporary.unlink()
+    portable.commit_no_replace(temporary,output)
 
 @dataclass
 class Source:
@@ -406,6 +407,8 @@ def extract(path,output,selection=None,notify=lambda *a:None,cancel=None):
             require(selected and len(set(selected))==len(selected) and all(0<=i<len(archive.packages) for i in selected),'Choose a valid package selection.')
             total=sum(archive.files[i][1] for k in selected for i in archive.trees[k].values());done=0;manifest=[];destinations=set()
             require(shutil.disk_usage(stage).free>total+32*1024*1024,'Not enough extraction disk space.')
+            # macOS APFS/HFS+ and exFAT fold letter case like Windows; detect it on the target itself.
+            fold=portable.folds_names(stage)
             for k in selected:
                 p=archive.packages[k];relative=package_path(p);require(relative not in destinations,'Duplicate extraction package path.');destinations.add(relative)
                 base=stage/relative;base.mkdir(parents=True)
@@ -413,8 +416,8 @@ def extract(path,output,selection=None,notify=lambda *a:None,cancel=None):
                 for item in sorted(p.directories|set(p.files)):
                     parts=path_parts(item)
                     for part in parts:safe_name(part,windows=os.name=='nt')
-                    key=item.casefold() if os.name=='nt' else item
-                    require(key not in collision,'Case-colliding names cannot be extracted on this filesystem.');collision.add(key)
+                    key=portable.name_key(item,fold)
+                    require(key not in collision,'Case-colliding names cannot be extracted on this filesystem: '+item);collision.add(key)
                 for directory in sorted(p.directories):check(cancel);(base/directory).mkdir(parents=True,exist_ok=True)
                 for item,index in archive.trees[k].items():
                     target=base/item;target.parent.mkdir(parents=True,exist_ok=True)
@@ -424,7 +427,7 @@ def extract(path,output,selection=None,notify=lambda *a:None,cancel=None):
                                  'metadata':[[t,base64.b64encode(d).decode('ascii')] for t,d in p.metadata]})
             archive.unchanged()
             (stage/'nup-manifest.json').write_text(json.dumps({'format':'NSP Box NUP extraction v1','packages':manifest},indent=2),encoding='utf-8')
-        check(cancel);stage.rename(output);notify('Extraction complete',100)
+        check(cancel);portable.commit_no_replace(stage,output);notify('Extraction complete',100)
         return {'output':str(output),'size':total,'verified':True,'packages':len(selected)}
     finally:
         if stage.exists():

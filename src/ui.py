@@ -22,7 +22,10 @@ def has_icon_asset(kind):
     return (ASSET_DIR/(ICON_ALIASES.get(kind,kind)+'.png')).is_file()
 
 def ui_font(size,bold=False):
+    """Native UI font per platform. Sizes are designed for Windows (96 dpi); Tk on
+    macOS measures points at 72 dpi, so they are scaled to keep the same pixel size."""
     if sys.platform=='win32':return ('Segoe UI Semibold' if bold else 'Segoe UI',size)
+    if sys.platform=='darwin':return ('.AppleSystemUIFont',round(size*1.2),'bold' if bold else 'normal')
     return ('DejaVu Sans',size,'bold' if bold else 'normal')
 
 def rgb(color):return tuple(int(color[i:i+2],16) for i in (1,3,5))
@@ -329,7 +332,10 @@ class DropZone(tk.Canvas):
             icon(self,'download',w/2-20,top,40,blend('#7297c9','#a6ceff',self.hot),2.1)
             top+=52
         selected=Path(self.app.folder.get()).name if self.app.folder.get() else None
-        title=selected or ('Drop your game folder here' if sys.platform=='win32' else 'Select your game folder')
+        drops=getattr(self.app,'_drops',None)
+        # Before drop setup finishes (deferred), keep Windows' long-standing wording.
+        can_drop=drops.available if drops is not None else sys.platform=='win32'
+        title=selected or ('Drop your game folder here' if can_drop else 'Select your game folder')
         if len(title)>56:title=title[:53]+'…'
         self.create_text(w/2,top+title_height/2,text=title,fill='#bdd6fa',font=title_font,tags='folder-title')
         self.create_text(w/2,top+title_height+3+subtitle_height/2,
@@ -426,12 +432,37 @@ class Status(tk.Canvas):
             self.create_arc(11,11,31,31,start=self.phase,extent=245,style='arc',outline=TEXT,width=2.3)
         else:icon(self,'check',10,10,22,TEXT,2)
 
+def load_tkdnd(root):
+    """Load the tkdnd extension (via the optional tkinterdnd2 package) into `root`.
+    Returns the module's DND_FILES type, or None when drops are unavailable."""
+    try:
+        from tkinterdnd2 import TkinterDnD, DND_FILES
+        TkinterDnD._require(root)
+        return DND_FILES
+    except Exception:
+        return None
+
 class FileDrops:
-    """Windows shell file drops. Hooks only this app's own top-level window."""
+    """File drops onto this app's own top-level window.
+
+    Windows uses the native WM_DROPFILES shell hook (no extra dependency).
+    macOS and Linux (X11/XWayland) use tkdnd when tkinterdnd2 is installed;
+    without it `available` is False and browsing/paths/paste still work.
+    """
     def __init__(self,root,receive):
         self.root=root;self.receive=receive;self.old=None;self.callback=None;self.hwnd=None
-        self.pending=queue.SimpleQueue();self.job=None;self.closed=False
-        if sys.platform!='win32':return
+        self.pending=queue.SimpleQueue();self.job=None;self.closed=False;self.available=False;self.tkdnd=False
+        if sys.platform!='win32':
+            files=load_tkdnd(root)
+            if files is None:return
+            # tk.Tk is not a BaseWidget, so use tkdnd's Tcl commands directly.
+            # tkdnd substitutes %D/%A itself and uses the result as the action.
+            self._tkdnd_command=root.register(self._tkdnd_drop)
+            root.tk.call('tkdnd::drop_target','register',root._w,(files,))
+            root.tk.call('bind',root._w,'<<Drop>>',self._tkdnd_command+' %D %A')
+            self.tkdnd=True;self.available=True
+            self.job=root.after(40,self.drain)
+            return
         from ctypes import wintypes as w
         self.user=ctypes.WinDLL('user32',use_last_error=True);self.shell=ctypes.WinDLL('shell32',use_last_error=True)
         self.user.GetParent.argtypes=[w.HWND];self.user.GetParent.restype=w.HWND
@@ -461,8 +492,14 @@ class FileDrops:
         self.callback=proc;ctypes.set_last_error(0)
         self.old=self.user.SetWindowLongPtrW(self.hwnd,-4,ctypes.cast(proc,ctypes.c_void_p))
         if not self.old:raise ctypes.WinError(ctypes.get_last_error())
-        self.shell.DragAcceptFiles(self.hwnd,True)
+        self.shell.DragAcceptFiles(self.hwnd,True);self.available=True
         self.job=root.after(40,self.drain)
+    def _tkdnd_drop(self,data,action='copy'):
+        # tkdnd delivers a Tcl list; braces protect paths containing spaces.
+        try:paths=[p for p in self.root.tk.splitlist(data) if p]
+        except tk.TclError:paths=[]
+        if paths:self.pending.put(paths[:256])
+        return action or 'copy'
     def drain(self):
         self.job=None
         if self.closed:return
@@ -479,13 +516,19 @@ class FileDrops:
             self.root.after_cancel(self.job);self.job=None
         if self.old and self.hwnd:
             self.shell.DragAcceptFiles(self.hwnd,False);self.user.SetWindowLongPtrW(self.hwnd,-4,self.old);self.old=None
+        if self.tkdnd:
+            try:
+                self.root.tk.call('bind',self.root._w,'<<Drop>>','')
+                self.root.tk.call('tkdnd::drop_target','unregister',self.root._w)
+                self.root.deletecommand(self._tkdnd_command)
+            except tk.TclError:pass
+            self.tkdnd=False
 
 class Layout:
     def style(self):
         self.motion=Motion(self)
-        if sys.platform=='win32':
-            enabled=ctypes.c_int(1)
-            if ctypes.windll.user32.SystemParametersInfoW(0x1042,0,ctypes.byref(enabled),0):self.motion.enabled=bool(enabled.value)
+        import portable
+        if portable.prefers_reduced_motion():self.motion.enabled=False
         s=ttk.Style(self);s.theme_use('clam')
         s.configure('.',font=ui_font(10),background=PANEL,foreground=TEXT)
         s.configure('TEntry',fieldbackground=FIELD,foreground=TEXT,bordercolor='#344962',lightcolor='#344962',darkcolor='#344962',
@@ -632,10 +675,11 @@ class Layout:
 
     def setup_drops(self):
         try:self._drops=FileDrops(self,self.receive_drop)
-        except (OSError,AttributeError):
+        except (OSError,AttributeError,tk.TclError):
             self._drops=None
-            # Browsing and path entry remain available when the shell disallows drops.
-            self.drop_zone.draw()
+        # Browsing and path entry remain available when the shell disallows drops;
+        # the zone's wording follows whether drops actually work here.
+        self.drop_zone.draw()
 
     def receive_drop(self,paths):
         if getattr(self,'active_tab','game')=='nup':

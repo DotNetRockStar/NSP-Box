@@ -1,34 +1,83 @@
 # Build from source
 
-Target: Windows 10/11 x64, CPython **3.11.9 x64**. No Nintendo data or keys are needed to build or run the synthetic tests.
+Targets: Windows 10/11 x64, macOS 11+ (arm64 and x64, built on each architecture), and
+64-bit Linux (glibc 2.35+). CPython **3.11.9**. No Nintendo data or keys are needed to
+build or run the synthetic tests. Native probe rebuilding is documented in
+[EMULATOR_PATCH.md](EMULATOR_PATCH.md); ordinary PyInstaller builds use the included
+payload and need no C compiler.
 
-This release targets Windows x64 only; no Linux download is included.
+`python -m PyInstaller --noconfirm --clean Packager.spec` produces, under `dist/`:
 
-Include `test_emulator_patch` in the unittest command. Native probe rebuilding is documented in [EMULATOR_PATCH.md](EMULATOR_PATCH.md); ordinary PyInstaller builds use the included payload and need no C compiler.
+| System | App | Command line |
+|---|---|---|
+| Windows | `NSP-Box.exe` (windowed, one file) | `nspbox.exe` (console) |
+| macOS | `NSP-Box.app` | `nspbox` |
+| Linux | `NSP-Box` (one file) | `nspbox` |
 
-From this source directory in PowerShell:
+`python package_release.py` then assembles the allowlisted portable archive for the
+current system under `release/` (`--skip-source` omits the source ZIP). The
+[release workflow](.github/workflows/release.yml) runs the same steps on Windows,
+macOS arm64, macOS x64 and Linux x64 and publishes all archives together.
+
+The test list is the same on every system:
+
+```text
+test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility
+test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization
+test_nup_polish test_portable
+```
+
+GUI tests (`test_ui`, `test_nup_ui`, the GUI case in `test_dlc`) need a desktop session;
+on a headless Linux machine use `xvfb-run -a`. The Windows native-drop test only runs
+on Windows. Everything else, including the command line, needs no Tk at all.
+
+### Windows (PowerShell)
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
-.\.venv\Scripts\python.exe test_engine.py
-.\.venv\Scripts\python.exe test_ui.py
-.\.venv\Scripts\python.exe test_artwork.py
-.\.venv\Scripts\python.exe test_performance_safety.py
-.\.venv\Scripts\python.exe test_nsp.py
-.\.venv\Scripts\python.exe test_compatibility.py
-.\.venv\Scripts\python.exe test_emulator_patch.py
-.\.venv\Scripts\python.exe test_dlc.py
-.\.venv\Scripts\python.exe test_file_drops.py
+.\.venv\Scripts\python.exe -m unittest test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization test_nup_polish test_portable
 .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean Packager.spec
+.\.venv\Scripts\python.exe frozen_smoke.py; .\.venv\Scripts\python.exe frozen_nup_smoke.py; .\.venv\Scripts\python.exe frozen_cli_smoke.py
 ```
 
-The EXE is created under `dist/`. Source and tests are provided as a separate release ZIP; the portable ZIP does not duplicate them. Keep `DISCLAIMER.md`, the root license, notices, and `licenses/` directory with any redistributed release. Dependency version pinning makes the build inputs identifiable; timestamps, Python installation details and toolchain/runtime differences mean binaries are not claimed to be bit-for-bit reproducible.
+### macOS and Linux (shell)
+
+Use a Python 3.11 that includes Tk: the python.org installer on macOS, or your
+distribution's `python3.11` plus `python3.11-tk`/`tk` on Linux. Homebrew's Python needs
+`brew install python-tk@3.11`. Linux GUI builds also need `binutils` (for PyInstaller)
+and `libxcursor1` for drag and drop.
+
+```sh
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements-build.txt
+.venv/bin/python -m unittest test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization test_nup_polish test_portable
+.venv/bin/python -m PyInstaller --noconfirm --clean Packager.spec
+.venv/bin/python frozen_smoke.py && .venv/bin/python frozen_nup_smoke.py && .venv/bin/python frozen_cli_smoke.py
+```
+
+macOS builds are ad-hoc signed. To sign with a Developer ID for notarization, set
+`NSPBOX_CODESIGN_IDENTITY` (and `NSPBOX_ENTITLEMENTS=packaging/macos/entitlements.plist`)
+before running PyInstaller; the release workflow does this, then notarizes and staples,
+when the `MACOS_*`/`APPLE_*` repository secrets are configured.
+
+Source and tests are provided as a separate release ZIP; the portable archives do not
+duplicate them. Keep `DISCLAIMER.md`, the root license, notices, and `licenses/`
+directory with any redistributed release. Dependency version pinning makes the build
+inputs identifiable; timestamps, Python installation details and toolchain/runtime
+differences mean binaries are not claimed to be bit-for-bit reproducible.
 
 Run the GUI from source:
 
 ```powershell
 .\.venv\Scripts\python.exe src\app.py
+```
+
+The command line from source (any system, no Tk required) — see [CLI.md](CLI.md):
+
+```sh
+python src/cli.py scan "/path/to/My Game Dump"
+python src/cli.py build "/path/to/My Game Dump" -o "/path/to/Packed/My Game.nsp"
 ```
 
 Optional command-line packaging:
@@ -42,8 +91,10 @@ Optional command-line packaging:
 
 ## Files
 
-- `src/app.py`: Tk GUI, queue-driven worker and command-line entry point.
-- `src/ui.py`: rounded antialiased components, cached bundled icons, time-based motion, and Windows shell drop integration.
+- `src/app.py`: Tk GUI and queue-driven worker; command-line arguments are handed to `src/cli.py`.
+- `src/cli.py`: the `nspbox` command line (`scan`, `build`, `dlc`, `nup …`) plus the original `--package` interface. Never imports Tk.
+- `src/portable.py`: operating-system differences: no-replace commits (exFAT-safe), case-insensitive `exefs`/`romfs` lookup, macOS metadata filtering, folder opening, settings paths and reduced-motion detection.
+- `src/ui.py`: rounded antialiased components, cached bundled icons, time-based motion, and file drops (Windows shell hook; TkDND on macOS/Linux).
 - `src/ambient.py`: low-resolution ambient gradient, shared background surfaces, minimized-window pause and reduced-motion handling.
 - `src/assets/`: app/UI PNG artwork and asset provenance notes, included in frozen and source builds.
 - `src/artwork.py`: supported formats, EXIF/first-frame decoding, crop geometry, full-image fitting and 256×256 JPEG encoding.
@@ -58,6 +109,8 @@ Optional command-line packaging:
 - `test_artwork.py`: codec decoding, square positioning, source preservation, fit mode and invalid-crop tests.
 - `test_performance_safety.py`: source reread avoidance, corruption/mutation detection and mapping cleanup.
 - `test_nsp.py`: NSP container/artwork/metadata round trips, CLI, cancellation, corruption, refusal cases and no-extra-source-pass checks.
+- `test_portable.py`: cross-platform commits (including the exFAT fallback), folder-name case, macOS metadata, case-colliding extraction and the command line.
+- `frozen_cli_smoke.py`: exercises the built `nspbox` binary without a desktop session.
 - `test_compatibility.py`: missing-entry setup, existing-key preservation, exact backups, idempotence and invalid-entry refusal.
 
 CLI artwork is center-cropped by default. `--artwork-fit` keeps the whole image; `--artwork-crop LEFT TOP RIGHT BOTTOM` supplies a square box in normalized 0–1 coordinates of the EXIF-oriented image. These options are mutually exclusive and require `--artwork`.

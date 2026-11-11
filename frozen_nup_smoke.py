@@ -3,7 +3,8 @@ from pathlib import Path
 import argparse,json,subprocess,tempfile,struct,sys
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--executable',type=Path,default=Path('dist/NSP-Box.exe'));args=parser.parse_args()
+    default={'win32':'dist/NSP-Box.exe','darwin':'dist/NSP-Box.app/Contents/MacOS/NSP-Box'}.get(sys.platform,'dist/NSP-Box')
+    parser=argparse.ArgumentParser();parser.add_argument('--executable',type=Path,default=Path(default));args=parser.parse_args()
     executable=args.executable.resolve();scratch=Path(__file__).parent/'test-work';scratch.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='frozen-nup-',dir=scratch) as tmp:
         root=Path(tmp);game=root/'Game';(game/'exefs').mkdir(parents=True);(game/'romfs').mkdir()

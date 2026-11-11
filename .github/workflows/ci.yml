@@ -1,0 +1,49 @@
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, ubuntu-22.04]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11.9'
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libxcursor1
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Run synthetic tests
+        run: |
+          TESTS="test_engine test_ui test_artwork test_performance_safety test_nsp test_compatibility test_emulator_patch test_dlc test_file_drops test_nup test_nup_ui test_nup_optimization test_nup_polish test_portable"
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s '-screen 0 1600x1200x24' python -m unittest $TESTS
+          else
+            python -m unittest $TESTS
+          fi

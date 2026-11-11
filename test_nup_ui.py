@@ -56,8 +56,16 @@ class NupInterfaceTests(unittest.TestCase):
             self.assertTrue(widget.winfo_ismapped(),str(widget))
             self.assertLessEqual(widget.winfo_rooty()+widget.winfo_height(),app.winfo_rooty()+app.winfo_height(),str(widget))
         import tkinter as tk
-        for widget in p.panels[-1].inner.winfo_children():
-            if isinstance(widget,tk.Label):self.assertGreaterEqual(widget.winfo_height(),widget.winfo_reqheight())
+        def labels_fit():
+            for widget in p.panels[-1].inner.winfo_children():
+                # Optional tips are hidden (not clipped) when the panel is too short.
+                if isinstance(widget,tk.Label) and widget.winfo_ismapped():
+                    self.assertGreaterEqual(widget.winfo_height(),widget.winfo_reqheight(),widget.cget('text')[:40])
+        labels_fit()
+        app.geometry('1280x1000');self.pump(.3);labels_fit()
+        if app.winfo_height()>=990:  # macOS clamps windows to small screens.
+            self.assertTrue(p.compat_tip.winfo_ismapped(),'Tip returns when there is room')
+        app.geometry('1010x830');self.pump(.3);labels_fit()
         for op in OPERATIONS:
             p.operation.set(op);p.changed();self.pump()
             self.assertEqual(p.preset_buttons[0].enabled,op in OPERATIONS[:2])

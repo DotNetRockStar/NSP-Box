@@ -1,6 +1,6 @@
 """Local emulator patch controls; all disk work runs outside the Tk thread."""
 from pathlib import Path
-import queue,threading,tkinter as tk
+import queue,sys,threading,tkinter as tk
 from tkinter import filedialog
 import emulator_patch
 from emulator_profiles import SUPPORTED_BUILDS, SUPPORT_CHECKED_DATE
@@ -15,8 +15,13 @@ class EmulatorDialog(tk.Toplevel):
         self.message=tk.StringVar(value='No emulator files have been changed.')
         tk.Label(self,text='Emulator patch',bg=BG,fg=TEXT,font=ui_font(22,True)).pack(anchor='w',padx=24,pady=(22,6))
         tk.Label(self,text='Read Switch 2 metadata inside NSP',bg=BG,fg=MUTED,font=ui_font(11)).pack(anchor='w',padx=24)
-        self.native_notice=tk.Label(self,text='PokeDinner 2.5.0 and newer builds with native NSP support need no patch or external main.npdm.\n'
-                 'Thanks to Franseven, creator of PokeDinner, for integrating support! Older builds are listed below.',
+        notice=('PokeDinner 2.5.0 and newer builds with native NSP support need no patch or external main.npdm.\n'
+                'Thanks to Franseven, creator of PokeDinner, for integrating support! Older builds are listed below.')
+        if sys.platform!='win32':
+            notice=('PokeDinner 2.5.0 and newer builds with native NSP support need no patch on any system.\n'
+                    'This patch only changes Windows x64 emulator files (for example on a shared drive or under Wine); '
+                    'macOS and Linux emulator builds are never modified.')
+        self.native_notice=tk.Label(self,text=notice,
                  bg=BG,fg='#b9d8ff',font=ui_font(10),justify='left',wraplength=748)
         self.native_notice.pack(anchor='w',padx=24,pady=(12,0))
         row=tk.Frame(self,bg=BG);row.pack(fill='x',padx=24,pady=(20,14))

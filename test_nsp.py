@@ -5,7 +5,7 @@ from unittest.mock import patch
 import json,mmap,struct,sys,tempfile,threading,unittest
 sys.path.insert(0,str(Path(__file__).parent/'src'))
 import engine,verify_format as reader
-from app import cli
+from cli import package_cli as cli
 from PIL import Image
 
 class NspTests(unittest.TestCase):

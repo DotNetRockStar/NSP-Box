@@ -4,14 +4,16 @@ The app's MIT license applies to its original Python source. Bundled dependencie
 
 | Component | Version in release | Notice / license copy |
 |---|---|---|
-| CPython | 3.11.9 x64 | `licenses/CPython-LICENSE.txt` (PSF and included component notices) |
+| CPython | 3.11.9 (Windows x64, macOS arm64/x64, Linux x64) | `licenses/CPython-LICENSE.txt` (PSF and included component notices) |
 | Tcl/Tk | 8.6, as supplied with CPython | `licenses/Tcl-license.terms`, `licenses/Tk-license.terms` |
 | Pillow | 12.2.0 | `licenses/Pillow-LICENSE.txt` (MIT-CMU and included library notices) |
 | python-zstandard | 0.25.0 | `licenses/python-zstandard-LICENSE.txt` (BSD 3-Clause) |
 | Zstandard | 1.5.7 | `licenses/Zstandard-LICENSE.txt` (BSD license option) |
 | PyInstaller bootloader | 6.19.0 | `licenses/PyInstaller-COPYING.txt` (GPL with bootloader exception) |
 | OpenSSL | Runtime version recorded in BUILD_INFO.json | `licenses/OpenSSL-LICENSE.txt` (Apache License 2.0) |
-| Microsoft Visual C++ runtime | Redistributable supplied with CPython | Microsoft runtime component; ownership and terms remain with Microsoft. |
+| Microsoft Visual C++ runtime | Windows only; redistributable supplied with CPython | Microsoft runtime component; ownership and terms remain with Microsoft. |
+| tkinterdnd2 | 0.7.0, macOS and Linux only | `licenses/tkinterdnd2-LICENSE.txt` (MIT) |
+| TkDND | 2.9/2.10 library bundled by tkinterdnd2, macOS and Linux only | `licenses/tkdnd-LICENSE.txt` (Tcl/Tk-style BSD terms) |
 
 Pillow's full bundled notice file contains the notices for its image/font/compression libraries. Portions of this software use the FreeType Project (https://www.freetype.org); see the FreeType license text in that file. Not every optional Pillow codec is necessarily loaded by this app.
 
@@ -28,5 +30,7 @@ Upstream projects:
 - Python: https://www.python.org/
 - Tcl/Tk: https://www.tcl.tk/
 - Pillow: https://python-pillow.github.io/
+- tkinterdnd2: https://github.com/Eliav2/tkinterdnd2
+- TkDND: https://github.com/petasis/tkdnd
 - PyInstaller: https://pyinstaller.org/
 - OpenSSL: https://openssl.org/
