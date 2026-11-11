@@ -11,6 +11,7 @@ Turn an extracted Switch 2 game dump (ExeFS/RomFS folders) into a plaintext **NS
 - **Runs on:** Windows 10/11 x64, macOS 11+ (Apple silicon or Intel) and 64-bit Linux (glibc 2.35+, e.g. Ubuntu 22.04, Debian 12, Fedora 36). Portable: nothing to install, no admin rights, no network.
 - **App:** open NSP Box → **Browse folder** → pick your game dump → set the name → **Build NSP**.
 - **Command line:** `nspbox build "Mario Kart World" --title "Mario Kart World" -o "Mario Kart World.nsp"`
+- **Save space:** `nspbox nup from-nsp "Mario Kart World.nsp"` makes a compressed NUP; `nspbox nup to-nsp` converts it back.
 - **Emulator:** set emulator memory to **12 GiB**. Use PokeDinner 2.5.0 or newer (native Switch 2 NSP support), apply the [emulator patch](EMULATOR_PATCH.md) on Windows, or keep the game's `main.npdm` beside the NSP.
 - **Your files only:** NSP Box ships no games, keys, firmware or artwork, and it never changes your source folder.
 
@@ -86,6 +87,26 @@ nspbox dlc "Donkey Kong Bananza DLC" --base-game "Donkey Kong Bananza.nsp" -o "D
 nspbox nup pack "Donkey Kong Bananza" --title "Donkey Kong Bananza" -o "Donkey Kong Bananza.nup"
 nspbox nup to-nsp "Donkey Kong Bananza.nup" -o "Donkey Kong Bananza.nsp"
 ```
+
+### NSP ↔ NUP: compressed archives
+
+A NUP is a compressed archive (Zstandard) that can hold the base game, its updates and DLC in one file. It takes less space than an NSP, which is uncompressed. Some emulators, PokeDinner 2.5.0+ for example, load `.nup` files directly. Convert back to NSP for emulators that don't.
+
+```sh
+# Dump folder → NUP (base, updates and DLC; one merged latest snapshot by default)
+nspbox nup pack "Donkey Kong Bananza" --title "Donkey Kong Bananza" --preset Smaller
+
+# NSP → NUP, and NUP → NSP (DLC in the archive comes out as separate NSPs)
+nspbox nup from-nsp "Mario Kart World.nsp" --preset Smaller
+nspbox nup to-nsp "Mario Kart World.nup" -o "Mario Kart World.nsp"
+
+# Look inside, check every block, or unpack to a folder
+nspbox nup inspect "Mario Kart World.nup"
+nspbox nup verify "Mario Kart World.nup"
+nspbox nup extract "Mario Kart World.nup" -o "Mario Kart World (extracted)"
+```
+
+Presets are `Fast`, `Balanced` (default) and `Smaller`. `--include base,updates,dlc` limits what goes in or comes out. See [NUP.md](NUP.md) for details.
 
 ### Other useful options
 
