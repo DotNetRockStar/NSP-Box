@@ -1,159 +1,132 @@
 # NSP Box: A Switch 2 Game Packager
 
-**NSP Box 4.0 — Meet NUP.** Create compressed NUP archives from extracted game
-folders, convert plaintext NSP ↔ NUP, extract selected content, and inspect or verify
-archives. See [NUP.md](NUP.md) for content selection, update merging, compression,
-DLC compatibility and storage requirements.
+Turn an extracted Switch 2 game dump (ExeFS/RomFS folders) into a plaintext **NSP** that compatible emulators can load. Package DLC as its own NSP, or compress everything into a **NUP** archive. Use the desktop app or the `nspbox` command line.
 
-[Download](https://github.com/smarkyie/NSP-Box/releases/latest) · [Build from source](BUILD.md) · [Changelog](CHANGELOG.md) · [Disclaimer](DISCLAIMER.md)
+[Download](https://github.com/DotNetRockStar/NSP-Box/releases/latest) · [Command line](CLI.md) · [NUP](NUP.md) · [DLC](DLC.md) · [Emulator patch](EMULATOR_PATCH.md) · [Build from source](BUILD.md) · [Changelog](CHANGELOG.md) · [Disclaimer](DISCLAIMER.md)
 
-A portable app for **Windows, macOS and Linux** that packages a complete, already-extracted ExeFS/RomFS snapshot into a plaintext NSP for compatible emulators. Choose a folder, add your own artwork, and build an NSP — in the app, or with the `nspbox` [command line](CLI.md).
+> This fork adds macOS and Linux support and the `nspbox` command line to [smarkyie/NSP-Box](https://github.com/smarkyie/NSP-Box), the original project.
 
-Version 4.0 adds NUP Tools with Fast/Balanced/Smaller compression, source-aware
-Base / Updates / DLC selection, a smaller latest-game snapshot option, custom title
-and cropped artwork, and automatic output beside the source. Source inspection
-reuses its file index, duplicate data can share storage, the artificial 32 GiB NSP
-cap is removed, and valid larger-window Zstandard frames now decode correctly.
-Thanks to **a55uka** and the [NUP project](https://github.com/a55uka/nup) for the
-format specification, and [@hlebushekhub](https://github.com/hlebushekhub) for
-reporting the file-size cap in [#8](https://github.com/smarkyie/NSP-Box/issues/8).
+## TL;DR
 
-Use **Game** for complete ExeFS/RomFS snapshots and **DLC** for separate RomFS-only add-ons. A user installed the Bananza DLC NSP and confirmed that the game recognized it in PokeDinner 2.0.0. This is one successful user test, not universal DLC compatibility. See [DLC instructions](DLC.md).
+- **Runs on:** Windows 10/11 x64, macOS 11+ (Apple silicon or Intel) and 64-bit Linux (glibc 2.35+, e.g. Ubuntu 22.04, Debian 12, Fedora 36). Portable: nothing to install, no admin rights, no network.
+- **App:** open NSP Box → **Browse folder** → pick your game dump → set the name → **Build NSP**.
+- **Command line:** `nspbox build "Mario Kart World" --title "Mario Kart World" -o "Mario Kart World.nsp"`
+- **Emulator:** set emulator memory to **12 GiB**. Use PokeDinner 2.5.0 or newer (native Switch 2 NSP support), apply the [emulator patch](EMULATOR_PATCH.md) on Windows, or keep the game's `main.npdm` beside the NSP.
+- **Your files only:** NSP Box ships no games, keys, firmware or artwork, and it never changes your source folder.
 
-The reversible **Emulator patch** panel now lists its supported Windows x64 targets: Selevet performance build 4 (normal/30 FPS GUI), Eglantine nx2 98/96, AMD Experimental 77-2 (build-99), and PokeDinner 2.1.0a/2.0.0. Standard/PGO and GUI/CLI variants are identified explicitly. Compatible Windows x64 Selevet/Eglantine/PokeDinner builds read the metadata inside an NSP, so a separate `main.npdm` beside the game is unnecessary after applying the patch and restarting. See [patch installation, removal and limits](EMULATOR_PATCH.md). The patch changes Windows x64 emulator files only; it never modifies macOS or Linux emulator builds.
+## Install
 
-**Piracy is not supported.** Use only files and artwork you have lawfully obtained and are authorized to use. No games, game artwork, firmware or Nintendo keys are provided. Nintendo Switch, Nintendo Switch 2 and related marks belong to Nintendo; game content belongs to its respective rights holders. This is an independent project, not affiliated with, sponsored by or endorsed by Nintendo. See [ownership and use notices](DISCLAIMER.md).
+1. Download the archive for your system: `Windows-x64` (.zip), `macOS-arm64` (Apple silicon) or `macOS-x64` (Intel) (.zip), or `Linux-x64` (.tar.gz).
+2. Extract it to any writable folder.
+3. Open `NSP-Box.exe` (Windows), `NSP-Box.app` (macOS) or `NSP-Box` (Linux). On macOS, if the first launch is blocked, go to **System Settings → Privacy & Security → Open Anyway**.
 
-> **Caution — experimental software:** set emulator memory to **12 GiB** before testing Switch 2 packages. The app does not change this setting. The patch is optional and only applies to recognized compatible code; it cannot add Switch 2 emulation to an unsupported emulator. Verification checks package integrity, not booting or gameplay.
+The `nspbox` command-line tool (`nspbox.exe` on Windows) is in the same folder.
 
-The startup modal has been removed. The Game tab shows the two ways to run Switch 2 NSPs: keep each game's own `main.npdm` beside its NSP, or use an emulator listed in Emulator patch with native support or the compatible patch applied. Full guidance remains in **Notes & compatibility**.
+## Use the app
 
-**PokeDinner 2.5.0 and newer builds with native NSP support need no patch or external `main.npdm`.** Thanks to **Franseven**, PokeDinner's creator, for integrating support; [2.5.0 release notes](https://git.eden-emu.dev/Franseven/PokeDinner-a-Eglantine-Fork/releases/tag/2.5.0) list Switch 2 NSP/NUP support. This is native format support, not a guarantee that every game works. Older builds without native detection need the exact game's external `main.npdm` or a supported patch. Use separate folders for different games' companion files. The file is `main.npdm`, not the `exefs/main` executable. Selecting 12 GiB alone can use incorrect timing on older, unpatched builds.
+1. Click **Browse folder** (or drag the folder in, or paste its path and press Enter) and choose your game dump.
+2. Pick the snapshot from the dropdown. The highest version is selected first.
+3. Check the **game name** and version. A dump without `control.nacp` takes its name from the folder, so a folder called `base` produces a game called "base"; type the real name here.
+4. Optionally add artwork (browse, drag, or paste) and click **Crop icon** to frame it.
+5. Choose the output file and click **Build NSP**. Leave **Verify after building** on.
 
-NSP output streams directly to its destination without an intermediate container. The app includes square artwork cropping, clipboard and drag-and-drop support, progress/cancellation, and full output verification.
-
-**Experimental build with limited real-world testing.** If anything goes wrong, [open an issue](https://github.com/smarkyie/NSP-Box/issues/new) with your app/emulator versions, reproduction steps and error messages. Do not upload game files, keys or personal paths.
-
-## Quick start
-
-1. Download the archive for your system and extract it to a writable folder: `Windows-x64` (.zip), `macOS-arm64` for Apple silicon or `macOS-x64` for Intel Macs (.zip), or `Linux-x64` (.tar.gz).
-2. Open `NSP-Box.exe` (Windows), `NSP-Box.app` (macOS) or `NSP-Box` (Linux). Python is bundled; installation is not required. On macOS, if the first launch is blocked, open **System Settings → Privacy & Security** and choose **Open Anyway**.
-3. Click **Browse folder** and select your main game dump folder, or drag the folder into the window. Pasting a folder path and pressing Enter also works.
-4. Select the complete snapshot you want from the dropdown. The app reads its title ID from `main.npdm`.
-5. Edit the displayed game name/version if needed. Add, drop or paste artwork, then click **Crop icon** to position it. Select an NSP destination filename in Output.
-6. Leave **Verify after building** checked. **Create package folder** beneath it is on by default: a folder named after the output file contains the package, a metadata companion and JSON verification report. Uncheck it to save only the selected NSP. Then click **Build NSP**.
-
-The app never overwrites an existing package and does not modify your source files. Cancellation removes the unfinished package. Verification works in both modes; it does not require saving a report. Allow roughly the input size plus 2% and 32 MB free disk space. The previous 32 GiB NSP cap has been removed; larger games are supported within the format, destination filesystem and available-space limits. See [large-file limits](NUP.md#large-games).
-
-With **Create package folder** enabled, `D:\Packed\Game.nsp` is saved as `D:\Packed\Game\Game.nsp`, with `main.npdm` and `Game.nsp.report.json` beside it. The companion is an optional workaround for the checked loader's early Switch 2 memory/clock detection. Keep each game/snapshot in a separate folder if using it; a conflicting companion is refused. The exact snapshot metadata is also embedded inside the package in both modes. After applying the emulator patch, the companion is unnecessary for supported containers: the emulator reads the embedded metadata. Keep the original companion as a backup if you plan to remove the patch.
-
-NSP is a PFS0 container with Program, Control and Meta NCAs for games, or Data and Meta NCAs for DLC. It is not compressed. Outputs are unsigned plaintext emulator repacks; this does not make them authenticated retail-console packages. Loading depends on the emulator's plaintext-content support. NSP Box does not create XCI files.
+**Create package folder** (on by default) puts the NSP in its own folder with a `main.npdm` copy and a JSON report, for emulators that need `main.npdm` beside the game. Turn it off to save only the NSP.
 
 ## Command line
 
-Each download includes `nspbox` (`nspbox.exe` on Windows) beside the app. It uses the same engine, needs no desktop session, and never overwrites an existing output. From source, run `python src/cli.py` (Python 3.11+ with Pillow and zstandard).
+`nspbox` uses the same engine as the app, works without a desktop session, and never overwrites an existing file. Run `nspbox --help` or see [CLI.md](CLI.md) for every option.
+
+### A base game: name it with `--title`
+
+```text
+Mario Kart World/
+  base/
+    exefs/
+    romfs/
+```
 
 ```sh
-# List the snapshots in a dump (index, title ID, version).
-nspbox scan "/path/to/My Game"
-
-# Build the newest snapshot with artwork; -s N picks another snapshot from scan.
-nspbox build "/path/to/My Game" -o "Packed/My Game.nsp" --artwork cover.png
-
-# Package DLC, and compress or check a NUP archive.
-nspbox dlc "/path/to/My Game DLC" -o "Packed/My Game DLC.nsp"
-nspbox nup pack "/path/to/My Game" --preset Smaller
-nspbox nup verify "/path/to/My Game.nup"
-
-# Machine-readable result for scripts, without progress output.
-nspbox build "/path/to/My Game" -o out.nsp --no-package-folder --json -q
+nspbox scan "Mario Kart World"
+nspbox build "Mario Kart World" --title "Mario Kart World" -o "Mario Kart World.nsp" --no-package-folder
 ```
 
-Progress goes to stderr and results to stdout. Exit codes: `0` success, `1` error, `2` invalid arguments, `130` cancelled; Ctrl+C removes the unfinished output. See [CLI.md](CLI.md) for every command and option.
+Without `--title`, a dump that has no `control.nacp` is named after the folder you pass. Pointing at `Mario Kart World/base` would give you a game called "base".
 
-## Use the emulator patch
-
-PokeDinner 2.5.0 and newer builds with native NSP support can skip these steps.
-
-1. Fully close the emulator and open **Emulator patch** in the packager header.
-2. Select the folder containing the Windows x64 Selevet/Eglantine/PokeDinner executables, then **Check** and **Add patch**. Matching unverified builds offer **Try patch** with an experimental warning.
-3. Restart the emulator. Open your NSP from a folder without an external `main.npdm`. Existing packages already contain their metadata and do not need rebuilding.
-4. For new single-file outputs, uncheck **Create package folder**. It remains on by default for compatibility with unpatched emulators.
-
-The packager need not stay open while playing. **Remove patch** restores exact backed-up executable bytes; retain the emulator folder's `.s2gp-patch` directory while patched. If **Older patch** appears, remove it before adding the corrected patch. Re-check after emulator updates. Future releases/forks must match the reviewed loader and metadata-reader code; unmatched or ambiguous executables are not modified.
-
-## Accepted folder layouts
-
-Direct snapshot:
+### Base game + update in one NSP, plus its DLC
 
 ```text
-My Game/
-  exefs/
-    main
-    main.npdm
-    rtld, sdk, subsdk* ... (as present in your dump)
-  romfs/
-    ... complete game filesystem ...
-```
-
-Main folder with snapshots:
-
-```text
-My Game/
+Donkey Kong Bananza/
   base/
-    exefs/...
-    romfs/...
+    exefs/
+    romfs/
   updates/
-    65536/
-      exefs/...
-      romfs/...
+    458752/          ← update 2.1.11 (a complete game snapshot)
+      exefs/
+      romfs/
+Donkey Kong Bananza DLC/
+  040074a01bf13001/  ← DLC title ID
+    0/
+      romfs/
 ```
 
-An empty `base` folder is fine when an update folder already contains the complete mounted game filesystem. A folder containing only update differences is **not** sufficient. Completeness cannot be reliably determined from filenames; select a snapshot you know is complete.
+```sh
+# Lists both snapshots; index 0 (the newest, the update) is built by default.
+nspbox scan "Donkey Kong Bananza"
 
-The Game tab does not merge separate updates or DLC; DLC folders are left out of game snapshots. Use the DLC tab to create a separate add-on package for installation through a compatible emulator. Multi-program applications, patch-only/BKTR data, encrypted NSP/XCI inputs, compressed ROM packages, decryption, and authenticated cartridge reconstruction are outside this release's scope. This is a snapshot packager, not an emulator or a universal game converter.
+nspbox build "Donkey Kong Bananza" --title "Donkey Kong Bananza" --display-version "2.1.11" \
+  -o "Donkey Kong Bananza.nsp" --no-package-folder
 
-## Artwork and metadata
+# DLC is always its own NSP. --base-game checks that it belongs to that game.
+nspbox dlc "Donkey Kong Bananza DLC" --base-game "Donkey Kong Bananza.nsp" -o "Donkey Kong Bananza DLC.nsp"
+```
 
-Artwork is exported as a **256×256 JPEG**, suitable for the emulator library icon. New artwork starts with a centered square crop. **Crop icon** opens an editor with drag-to-position, mouse-wheel/slider zoom, a live icon preview, Reset, Apply and Cancel. **Fit whole image** retains the entire image with padding instead. Cropping never changes the original file.
+`build` packages one complete snapshot. Use it when the update folder holds the whole game, as a dumped update usually does. If the update contains only changed files, merge it through NUP instead. `nup pack` keeps one merged latest snapshot by default.
 
-Supported inputs include PNG, JPEG/JFIF, WEBP, AVIF, GIF, TIFF, BMP/DIB, Windows ICO, Mac ICNS, TGA, PPM/PGM/PBM/PNM and JPEG2000. Animated or multi-page inputs use the first frame/page; icon containers use Pillow's selected image, normally the largest available. HEIC/HEIF and SVG are not decoded by this build.
+```sh
+nspbox nup pack "Donkey Kong Bananza" --title "Donkey Kong Bananza" -o "Donkey Kong Bananza.nup"
+nspbox nup to-nsp "Donkey Kong Bananza.nup" -o "Donkey Kong Bananza.nsp"
+```
 
-Use **Paste** or **Ctrl+V** to add a copied bitmap, copied artwork file, or local image-file path. Ordinary text pastes in text fields continue to work normally. You can also drag one artwork file into the app. Clipboard images are held in temporary PNG files until the app closes; the app reads the clipboard only when you request a paste. Copying a URL alone does not download its image.
+### Other useful options
 
-The app embeds the selected crop in the game NSP. No game artwork ships with this app.
+```sh
+nspbox build "My Game" -s 1 -o "My Game v1.0.nsp"            # build another snapshot from scan
+nspbox build "My Game" --title "My Game" --artwork cover.png    # add artwork (center-cropped)
+nspbox nup verify "My Game.nup"                                 # check a NUP archive
+nspbox build "My Game" -o out.nsp --no-package-folder --json -q # quiet, JSON result for scripts
+```
 
-If a standard `control.nacp` is present at the snapshot/main root or under `control/`, the app preserves it and updates uncompressed title text and the display version. Otherwise it generates basic control metadata. Generated fields are not a recreation of all original save-size, network, language, or DLC settings. A folder version such as `327680` is a numeric dump version, not necessarily a human-readable game version.
+Progress goes to stderr and results to stdout. Exit codes: `0` success, `1` error, `2` invalid arguments, `130` cancelled (Ctrl+C removes the unfinished file). Allow free space of about the game size plus 2%. Large games work: there is no 32 GiB cap.
 
-## Eglantine plaintext compatibility entries
+## Running the NSP in an emulator
 
-Some Eglantine builds require key entries even when NCA headers and sections are plaintext. This package includes `compatibility/plaintext-repack.keys`, containing **locally generated placeholders**, not Nintendo keys. They cannot decrypt retail content. The app does not install them or change emulator configuration automatically.
+- Set the emulator's memory to **12 GiB** before testing Switch 2 games. NSP Box doesn't change emulator settings.
+- **PokeDinner 2.5.0+** reads Switch 2 NSPs natively; nothing else is needed.
+- **Older Selevet / Eglantine / PokeDinner builds on Windows x64:** apply the reversible [emulator patch](EMULATOR_PATCH.md) from the app's **Emulator patch** panel, or keep the game's own `main.npdm` beside its NSP (that's what **Create package folder** provides).
+- **Error 0007-0015 or a missing key in Eglantine:** use **Notes & compatibility → Set up emulator keys folder…** to add the placeholder entries for plaintext packages. These are locally generated placeholders, not Nintendo keys.
+- **DLC:** add the DLC NSP through the emulator's install/add-content option. See [DLC.md](DLC.md).
 
-If Eglantine reports **0007-0015** or a missing key for this app's plaintext images, close it and use **Notes & compatibility → Set up emulator keys folder…**. Select that profile's `keys` folder, commonly `%APPDATA%\eden\keys` or `user\keys` beside a portable emulator. Setup adds only missing plaintext placeholders to `prod.keys_autogenerated`, preserves existing entries and never writes `prod.keys`. An existing autogenerated file is backed up before appending; invalid existing entries are reported rather than replaced. Restart the emulator afterwards.
+A successful build and verification means the package is intact. It doesn't guarantee that the game boots or plays well in a given emulator.
 
-Manual export remains available:
+## Good to know
 
-1. Close Eglantine and open its user keys folder, commonly `%APPDATA%\eden\keys`.
-2. If `prod.keys_autogenerated` does not exist, copy `plaintext-repack.keys` there and rename the copy to `prod.keys_autogenerated`.
-3. If that file already exists, keep it. Back it up before editing and add **only missing** placeholder entries. Keep all real keys in `prod.keys`; that file takes precedence in the checked Eglantine loader.
-4. Restart Eglantine.
+- **Accepted folders:** a single snapshot (`exefs/` + `romfs/`), or a main folder with `base/` and `updates/<version>/`. An update folder that holds only changed files is not a complete game on its own.
+- **Not supported:** encrypted NSP/XCI inputs, decryption, XCI output, and multi-program games.
+- **Artwork:** saved as a 256×256 JPEG icon. Most image formats work (PNG, JPEG, WEBP, AVIF, GIF, TIFF, ICO, ICNS …); HEIC and SVG don't.
+- **Metadata:** an existing `control.nacp` is kept, with your name and version applied. Otherwise basic metadata is generated, with your name and version.
+- **Privacy:** no telemetry, uploads or downloads. The optional JSON report contains local paths; review it before sharing.
+- **Linux drag and drop** needs the common `libXcursor` library. Everything else works without it.
 
-The GUI's export button saves another copy without overwriting anything. Setup runs only when explicitly selected, never during scanning/building. These placeholders support this app's plaintext repacks; they do not replace your own retail keys for encrypted games. Eglantine forks can differ; consult the fork's documentation if its key-loading rules differ.
+More detail: [TECHNICAL_NOTES.md](TECHNICAL_NOTES.md), [NUP.md](NUP.md), [PERFORMANCE_NOTES.md](PERFORMANCE_NOTES.md).
 
-## Portability and privacy
+## Legal
 
-- Windows 10/11 x64, macOS 11 or later (Apple silicon or Intel), or 64-bit Linux with glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer) and an X11 or XWayland desktop; no administrator rights, Python installation, emulator installation, or network connection required.
-- The one-file Windows and Linux programs unpack their bundled runtime into the temporary directory at launch and clean it up on normal exit. The macOS app is a standard application bundle.
-- Drag and drop works on all three systems. On Linux it uses the bundled TkDND library, which needs the common `libXcursor` desktop library; browsing, pasting paths and the command line work without it.
-- The `nspbox` command-line tool beside the app runs without a desktop session; see [CLI.md](CLI.md).
-- No telemetry, upload or automatic downloading. Emulator setup runs only when explicitly selected; builds do not change emulator configuration.
-- When package-folder output is enabled, paths appear in its local JSON report. Review or remove reports before sharing them if you do not want to disclose local folder names.
-- Releases are unsigned unless a release note says otherwise (macOS builds are ad-hoc signed). No claim of Nintendo authentication or endorsement is made.
+**Piracy is not supported.** Use only games, files and artwork you own and are allowed to use. NSP Box includes no Nintendo code, game data, firmware, keys or game artwork. Outputs are unsigned plaintext emulator repacks, not console-installable packages. Nintendo Switch and Nintendo Switch 2 are trademarks of Nintendo. This project is independent and is not affiliated with or endorsed by Nintendo. See [DISCLAIMER.md](DISCLAIMER.md).
 
-## Source and redistribution
+The application is MIT-licensed (`LICENSE.txt`); third-party components keep their own licenses (`licenses/`, `THIRD_PARTY_NOTICES.md`).
 
-Full application source, icon assets and synthetic tests are available in the separate source ZIP on the [release page](https://github.com/smarkyie/NSP-Box/releases/latest). The portable ZIP contains the app, documentation and required license notices; it does not duplicate the source. In this repository, application modules are under `src/` and tests are at the root. The original application code is released under the MIT license in `LICENSE.txt`; third-party components retain their own licenses under `licenses/` and `THIRD_PARTY_NOTICES.md`.
+## Credits
 
-You may redistribute the app and source with the required license notices. The software was developed with AI assistance. This package includes no Nintendo code, game data, game cover artwork, console firmware, tickets, certificates, or Nintendo cryptographic keys. Use your own extracted data and artwork; redistribution rights for input/output content are separate from the app's license.
+NSP Box was created by [smarkyie](https://github.com/smarkyie/NSP-Box). Thanks to **a55uka** and the [NUP project](https://github.com/a55uka/nup) for the NUP format, **Franseven** for native NSP/NUP support in PokeDinner, and [@hlebushekhub](https://github.com/hlebushekhub) for reporting the old file-size cap.
 
-See `TECHNICAL_NOTES.md` for implementation details and `BUILD.md` in the source ZIP to rebuild the app on Windows, macOS or Linux. See `GITHUB_RELEASES.md` for publishing future versions.
+This is experimental software with limited real-world testing. When reporting a problem, include app and emulator versions, steps and error messages, but no game files, keys or personal paths.
